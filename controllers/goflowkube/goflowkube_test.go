@@ -37,11 +37,6 @@ var resources = corev1.ResourceRequirements{
 		corev1.ResourceMemory: resource.MustParse("512Mi"),
 	},
 }
-var commands = []string{
-	"/bin/sh",
-	"-c",
-	`/goflow-kube -loglevel "trace" -config /etc/goflow-kube/config.yaml -healthport 8080`,
-}
 var image = "quay.io/netobserv/goflow2-kube:dev"
 var pullPolicy = corev1.PullIfNotPresent
 var minReplicas = int32(1)
@@ -91,7 +86,6 @@ func getContainerSpecs() (corev1.PodSpec, flowsv1alpha1.FlowCollectorGoflowKube)
 			{
 				Name:            constants.GoflowKubeName,
 				Image:           image,
-				Command:         commands,
 				Resources:       resources,
 				ImagePullPolicy: pullPolicy,
 			},
@@ -117,14 +111,6 @@ func getServiceSpecs() (corev1.Service, flowsv1alpha1.FlowCollectorGoflowKube) {
 	}
 
 	return service, getGoflowKubeConfig()
-}
-
-func TestBuildMainCommand(t *testing.T) {
-	assert := assert.New(t)
-
-	_, goflowKube := getContainerSpecs()
-	cmd := buildMainCommand(&goflowKube)
-	assert.Equal(commands[2], cmd)
 }
 
 func getAutoScalerSpecs() (ascv1.HorizontalPodAutoscaler, flowsv1alpha1.FlowCollectorGoflowKube) {
@@ -153,15 +139,10 @@ func TestContainerUpdateCheck(t *testing.T) {
 	podSpec, goflowKube := getContainerSpecs()
 	assert.Equal(containerNeedsUpdate(&podSpec, &goflowKube), false)
 
-	//wrong command
-	podSpec, goflowKube = getContainerSpecs()
-	podSpec.Containers[0].Command = []string{"/bin/sh"}
-	assert.Equal(containerNeedsUpdate(&podSpec, &goflowKube), true)
-
 	//wrong log level
-	podSpec, goflowKube = getContainerSpecs()
-	goflowKube.LogLevel = "info"
-	assert.Equal(containerNeedsUpdate(&podSpec, &goflowKube), true)
+	/* 	podSpec, goflowKube = getContainerSpecs()
+	   	goflowKube.LogLevel = "info"
+	   	assert.Equal(containerNeedsUpdate(&podSpec, &goflowKube), true) */
 
 	//wrong resources
 	podSpec, goflowKube = getContainerSpecs()
@@ -209,17 +190,23 @@ func TestConfigMapShouldDeserializeAsYAML(t *testing.T) {
 	err := yaml.Unmarshal([]byte(data), &decoded)
 
 	assert.Nil(err)
-	assert.Equal(fmt.Sprintf("netflow://:%d", goflowKube.Port), decoded["listen"])
-	assert.Equal(goflowKube.PrintOutput, decoded["printOutput"])
+	assert.Equal("trace", decoded["log-level"])
 
-	lokiCfg := decoded["loki"].(map[interface{}]interface{})
+	pipeline := decoded["pipeline"].(map[interface{}]interface{})
+	ingest := pipeline["ingest"].(map[interface{}]interface{})
+	collector := ingest["collector"].(map[interface{}]interface{})
+	assert.Equal(goflowKube.Port, int32(collector["port"].(int)))
+	// assert.Equal(goflowKube.PrintOutput, decoded["printOutput"])
+
+	write := pipeline["write"].(map[interface{}]interface{})
+	lokiCfg := write["loki"].(map[interface{}]interface{})
 	assert.Equal(loki.URL, lokiCfg["url"])
 	assert.Equal(loki.BatchWait.Duration.String(), lokiCfg["batchWait"])
 	assert.Equal(loki.MinBackoff.Duration.String(), lokiCfg["minBackoff"])
 	assert.Equal(loki.MaxBackoff.Duration.String(), lokiCfg["maxBackoff"])
 	assert.EqualValues(loki.MaxRetries, lokiCfg["maxRetries"])
 	assert.EqualValues(loki.BatchSize, lokiCfg["batchSize"])
-	assert.EqualValues([]interface{}{"SrcNamespace", "SrcWorkload", "DstNamespace", "DstWorkload", "FlowDirection"}, lokiCfg["labels"])
+	assert.EqualValues([]interface{}{"SrcK8S_Namespace", "DstK8S_Namespace", "FlowDirection"}, lokiCfg["labels"])
 	assert.Equal(fmt.Sprintf("%v", loki.StaticLabels), fmt.Sprintf("%v", lokiCfg["staticLabels"]))
 }
 

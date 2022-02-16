@@ -242,9 +242,6 @@ func containerNeedsUpdate(podSpec *corev1.PodSpec, desired *goflowKubeSpec) bool
 	if !reflect.DeepEqual(desired.Resources, container.Resources) {
 		return true
 	}
-	if len(container.Command) != 3 || container.Command[2] != buildMainCommand(desired) {
-		return true
-	}
 	return false
 }
 

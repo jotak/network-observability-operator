@@ -7,4 +7,4 @@ const (
 	DaemonSetKind  = "DaemonSet"
 )
 
-var Labels = []string{"SrcNamespace", "SrcWorkload", "DstNamespace", "DstWorkload", "FlowDirection"}
+var Labels = []string{"SrcK8S_Namespace", "DstK8S_Namespace", "FlowDirection"}
