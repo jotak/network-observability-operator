@@ -25,10 +25,10 @@ const configFile = "config.yaml"
 const (
 	healthServiceName = "health"
 
-/* 	healthTimeoutSeconds    = 5
-livenessPeriodSeconds   = 10
-startupFailureThreshold = 5
-startupPeriodSeconds    = 10 */
+	/* 	healthTimeoutSeconds    = 5
+	livenessPeriodSeconds   = 10
+	startupFailureThreshold = 5
+	startupPeriodSeconds    = 10 */
 )
 
 // PodConfigurationDigest is an annotation name to facilitate pod restart after
@@ -48,27 +48,34 @@ type Pipeline struct {
 	Transform []Transform `json:"transform"`
 	Write     Write       `json:"write"`
 }
+
 type Ingest struct {
 	Collector Collector `json:"collector"`
 	Type      string    `json:"type"`
 }
+
 type Collector struct {
 	Hostname string `json:"hostname"`
 	Port     int    `json:"port"`
 }
+
 type Decode struct {
 	Type string `json:"type"`
 }
+
 type Encode struct {
 	Type string `json:"type"`
 }
+
 type Extract struct {
 	Type string `json:"type"`
 }
+
 type Write struct {
 	Loki Loki   `json:"loki"`
 	Type string `json:"type"`
 }
+
 type Loki struct {
 	URL            string            `json:"url,omitempty"`
 	BatchWait      metav1.Duration   `json:"batchWait,omitempty"`
@@ -81,18 +88,21 @@ type Loki struct {
 	StaticLabels   map[string]string `json:"staticLabels,omitempty"`
 	TimestampLabel string            `json:"timestampLabel,omitempty"`
 }
+
 type Transform struct {
 	Network Network `json:"network"`
 	Type    string  `json:"type"`
 }
+
 type Network struct {
 	Rules []Rule `json:"rules"`
 }
+
 type Rule struct {
-	Input      string `json:"input"`
-	Output     string `json:"output"`
-	Type       string `json:"type"`
-	Parameters string `json:"parameters"`
+	Input      string `json:"input,omitempty"`
+	Output     string `json:"output,omitempty"`
+	Type       string `json:"type,omitempty"`
+	Parameters string `json:"parameters,omitempty"`
 }
 
 type builder struct {
@@ -242,17 +252,21 @@ func (b *builder) configMap() (*corev1.ConfigMap, string) {
 			Decode:  Decode{Type: "json"},
 			Encode:  Encode{Type: "none"},
 			Extract: Extract{Type: "none"},
-			Transform: []Transform{{Type: "network", Network: Network{
-				Rules: []Rule{{
-					Input:  "SrcAddr",
-					Output: "SrcK8S",
-					Type:   "add_kubernetes",
-				}, {
-					Input:  "DstAddr",
-					Output: "DstK8S",
-					Type:   "add_kubernetes",
-				}},
-			}}},
+			Transform: []Transform{
+				{Type: "network", Network: Network{
+					Rules: []Rule{
+						{
+							Input:  "SrcAddr",
+							Output: "SrcK8S",
+							Type:   "add_kubernetes",
+						},
+						{
+							Input:  "DstAddr",
+							Output: "DstK8S",
+							Type:   "add_kubernetes",
+						},
+					},
+				}}},
 			Write: Write{Type: "loki", Loki: Loki{Labels: constants.Labels}},
 		},
 	}

@@ -12,8 +12,8 @@ spec:
     kind: Deployment
     replicas: 1
     port: 2055
-    image: 'quay.io/netobserv/goflow2-kube:main'
-    imagePullPolicy: IfNotPresent
+    image: 'quay.io/netobserv/flowlogs2metrics:latest'
+    imagePullPolicy: Always
     logLevel: info
     printOutput: false
     healthPort: 8080

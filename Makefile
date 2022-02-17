@@ -234,4 +234,4 @@ catalog-push: ## Push a catalog image.
 # Deploy the sample FlowCollector CR
 .PHONY: create-sample
 create-sample:
-	sed -e 's~:main~:$(VERSION)~' ./config/samples/flows_v1alpha1_flowcollector.yaml | echo | kubectl apply -f -
+	sed -e 's~:main~:$(VERSION)~' ./config/samples/flows_v1alpha1_flowcollector.yaml | kubectl apply -f -
