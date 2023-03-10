@@ -25,21 +25,5 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `Catalog source:
-                ```yaml
-                apiVersion: operators.coreos.com/v1alpha1
-                kind: CatalogSource
-                metadata:
-                  name: noo-dev-catalog
-                  namespace: openshift-marketplace
-                spec:
-                  sourceType: grpc
-                  image: <IMG>
-                  displayName: Network observability development catalog
-                  publisher: Me
-                  updateStrategy:
-                    registryPoll:
-                      interval: 1m
-                ```
-                Cheers!`
+              body: "Catalog source:\n```yaml\napiVersion: operators.coreos.com/v1alpha1\nkind: CatalogSource\nmetadata:\n  name: noo-dev-catalog\n  namespace: openshift-marketplace\nspec:\n  sourceType: grpc\n  image: <IMG>\n  displayName: Network observability development catalog\n  publisher: Me\n  updateStrategy:\n    registryPoll:\n      interval: 1m\n```\n"
             })
