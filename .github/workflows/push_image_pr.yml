@@ -17,51 +17,6 @@ jobs:
       matrix:
         go: ['1.19']
     steps:
-      - name: install make
-        run: sudo apt-get install make
-      - name: set up go 1.x
-        uses: actions/setup-go@v3
-        with:
-          go-version: ${{ matrix.go }}
-      - name: checkout
-        uses: actions/checkout@v3
-        with:
-          ref: "refs/pull/${{ github.event.number }}/merge"
-      - name: build images
-        run: IMG=${{ env.REGISTRY }}/${{ env.IMAGE }}:temp make ci-images-build
-      - name: podman login to quay.io
-        uses: redhat-actions/podman-login@v1
-        with:
-          username: ${{ env.REGISTRY_USER }}
-          password: ${{ secrets.QUAY_SECRET }}
-          registry: quay.io
-      - name: get short sha
-        run: echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-      - name: push to quay.io
-        id: push-to-quay
-        uses: redhat-actions/push-to-registry@v2
-        with:
-          image: ${{ env.IMAGE }}
-          tags: ${{ env.short_sha }}
-          registry: ${{ env.REGISTRY }}
-      - name: build bundle
-        run: OPERATOR_VERSION=${{ env.short_sha }} PLG_VERSION=main FLP_VERSION=main BPF_VERSION=main BUNDLE_VERSION=0.0.0-${{ env.short_sha }} make bundle shortlived-bundle-build
-      - name: push bundle to quay.io
-        id: push-bundle
-        uses: redhat-actions/push-to-registry@v2
-        with:
-          image: ${{ env.IMAGE }}-bundle
-          tags: v0.0.0-${{ env.short_sha }}
-          registry: ${{ env.REGISTRY }}
-      - name: build catalog
-        run: BUNDLE_VERSION=0.0.0-${{ env.short_sha }} make shortlived-catalog-build
-      - name: push catalog to quay.io
-        id: push-catalog
-        uses: redhat-actions/push-to-registry@v2
-        with:
-          image: ${{ env.IMAGE }}-catalog
-          tags: v0.0.0-${{ env.short_sha }}
-          registry: ${{ env.REGISTRY }}
       - uses: actions/github-script@v5
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
@@ -70,5 +25,21 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: 'New images: ${{ steps.push-to-quay.outputs.registry-paths }}, ${{ steps.push-bundle.outputs.registry-paths }}, ${{ steps.push-catalog.outputs.registry-paths }}. They will expire after two weeks.'
+              body: `Catalog source:
+                ```yaml
+                apiVersion: operators.coreos.com/v1alpha1
+                kind: CatalogSource
+                metadata:
+                  name: noo-dev-catalog
+                  namespace: openshift-marketplace
+                spec:
+                  sourceType: grpc
+                  image: <IMG>
+                  displayName: Network observability development catalog
+                  publisher: Me
+                  updateStrategy:
+                    registryPoll:
+                      interval: 1m
+                ```
+                Cheers!`
             })
