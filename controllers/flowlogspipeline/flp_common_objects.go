@@ -56,9 +56,13 @@ const (
 )
 
 const (
-	dashboardName  = "netobserv"
-	dashboardTitle = "Netobserv Metrics"
-	dashboardTags  = "['netobserv','grafana','dashboard','flp']"
+	dashboardName         = "netobserv"
+	dashboardTitle        = "NetObserv"
+	dashboardTags         = "['netobserv-mixin']"
+	dashboardCMNamespace  = "openshift-config-managed"
+	dashboardCMAnnotation = "console.openshift.io/dashboard"
+	dashboardCMName       = "grafana-dashboard-netobserv"
+	dashboardCMFile       = "netobserv-metrics.json"
 )
 
 var FlpConfSuffix = map[ConfKind]string{
@@ -325,7 +329,10 @@ func obtainMetricsConfiguration(desired *flowslatest.FlowCollectorSpec) (api.Pro
 	if stages[0].Encode == nil || stages[0].Encode.Prom == nil {
 		return nil, "", fmt.Errorf("error generating truncated config, Encode expected in %v", stages)
 	}
-	jsonStr, _ := cg.GenerateGrafanaJson()
+	jsonStr, err := cg.GenerateGrafanaJson()
+	if err != nil {
+		return nil, "", fmt.Errorf("error generating grafana dashboard: %w", err)
+	}
 	return stages[0].Encode.Prom.Metrics, jsonStr, nil
 }
 
@@ -508,15 +515,16 @@ func AddNextStages(stage *config.PipelineBuilderStage, desired *flowslatest.Flow
 		return nil, err
 	}
 
-	// prometheus stage (encode) configuration
-	promEncode := api.PromEncode{
-		Prefix:  "netobserv_",
-		Metrics: promMetrics,
+	if len(promMetrics) > 0 {
+		// prometheus stage (encode) configuration
+		promEncode := api.PromEncode{
+			Prefix:  "netobserv_",
+			Metrics: promMetrics,
+		}
+		enrichedStage.EncodePrometheus("prometheus", promEncode)
 	}
 
-	enrichedStage.EncodePrometheus("prometheus", promEncode)
 	addCustomExportStages(&enrichedStage, desired)
-
 	return &GeneratedConfig{
 		Stages:           enrichedStage.GetStages(),
 		Params:           enrichedStage.GetStageParams(),
@@ -527,14 +535,14 @@ func AddNextStages(stage *config.PipelineBuilderStage, desired *flowslatest.Flow
 func dashboardsConfigMap(dashboard string) *corev1.ConfigMap {
 	configMap := corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "foo (fixme)",
-			Namespace: "openshift-config-managed",
+			Name:      dashboardCMName,
+			Namespace: dashboardCMNamespace,
 			Labels: map[string]string{
-				"console.openshift.io/dashboard": "true",
+				dashboardCMAnnotation: "true",
 			},
 		},
 		Data: map[string]string{
-			"netobserv-metrics.json": dashboard,
+			dashboardCMFile: dashboard,
 		},
 	}
 	return &configMap

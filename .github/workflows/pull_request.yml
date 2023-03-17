@@ -30,7 +30,7 @@ jobs:
       with:
         files: ./cover.out
         flags: unittests
-        fail_ci_if_error: false        
+        fail_ci_if_error: false
 
   bundle-check:
     runs-on: ubuntu-latest
