@@ -90,7 +90,7 @@ func (r *flpTransformerReconciler) reconcile(ctx context.Context, desired *flows
 	}
 
 	builder := newTransfoBuilder(r.nobjMngr.Namespace, r.image, &desired.Spec, r.useOpenShiftSCC, r.CertWatcher)
-	newCM, configDigest, dbConfigMap, err := builder.configMap()
+	newCM, configDigest, dbConfigMap, err := builder.configMaps()
 	if err != nil {
 		return err
 	}

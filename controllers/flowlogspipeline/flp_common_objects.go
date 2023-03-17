@@ -67,6 +67,12 @@ var FlpConfSuffix = map[ConfKind]string{
 	ConfKafkaTransformer: "-transformer",
 }
 
+type GeneratedConfig struct {
+	Stages           []config.Stage
+	Params           []config.StageParam
+	DashboardContent string
+}
+
 type builder struct {
 	namespace       string
 	labels          map[string]string
@@ -117,13 +123,11 @@ func RoleBindingName(ck ConfKind) string      { return name(ck) + "-role" }
 func RoleBindingMonoName(ck ConfKind) string  { return name(ck) + "-role-mono" }
 func promServiceName(ck ConfKind) string      { return name(ck) + "-prom" }
 func configMapName(ck ConfKind) string        { return name(ck) + "-config" }
-func dbConfigMapName(ck ConfKind) string      { return name(ck) + "-metrics-dashboard" }
 func serviceMonitorName(ck ConfKind) string   { return name(ck) + "-monitor" }
 func prometheusRuleName(ck ConfKind) string   { return name(ck) + "-alert" }
 func (b *builder) name() string               { return name(b.confKind) }
 func (b *builder) promServiceName() string    { return promServiceName(b.confKind) }
 func (b *builder) configMapName() string      { return configMapName(b.confKind) }
-func (b *builder) dbConfigMapName() string    { return dbConfigMapName(b.confKind) }
 func (b *builder) serviceMonitorName() string { return serviceMonitorName(b.confKind) }
 func (b *builder) prometheusRuleName() string { return prometheusRuleName(b.confKind) }
 
@@ -269,7 +273,7 @@ var metricsConfigEmbed embed.FS
 
 // obtainMetricsConfiguration returns the configuration info for the prometheus stage needed to
 // supply the metrics and also the dashboards for those metrics
-func (b *builder) obtainMetricsConfiguration() (api.PromMetricsItems, string, error) {
+func obtainMetricsConfiguration(desired *flowslatest.FlowCollectorSpec) (api.PromMetricsItems, string, error) {
 	entries, err := metricsConfigEmbed.ReadDir(metricsConfigDir)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to access metrics_definitions directory: %w", err)
@@ -277,7 +281,7 @@ func (b *builder) obtainMetricsConfiguration() (api.PromMetricsItems, string, er
 
 	cg := confgen.NewConfGen(&confgen.Options{
 		GenerateStages: []string{"encode_prom"},
-		SkipWithTags:   b.desired.Processor.Metrics.IgnoreTags,
+		SkipWithTags:   desired.Processor.Metrics.IgnoreTags,
 	})
 
 	config := confgen.Config{
@@ -325,13 +329,17 @@ func (b *builder) obtainMetricsConfiguration() (api.PromMetricsItems, string, er
 	return stages[0].Encode.Prom.Metrics, jsonStr, nil
 }
 
-func (b *builder) addTransformStages(stage *config.PipelineBuilderStage) (*corev1.ConfigMap, error) {
+func (b *builder) addNextStages(stage *config.PipelineBuilderStage) (*GeneratedConfig, error) {
+	return AddNextStages(stage, b.desired)
+}
+
+func AddNextStages(stage *config.PipelineBuilderStage, desired *flowslatest.FlowCollectorSpec) (*GeneratedConfig, error) {
 	lastStage := *stage
 	indexFields := constants.LokiIndexFields
 
 	// Filter-out unused fields?
-	if b.desired.Processor.DropUnusedFields {
-		if helper.UseIPFIX(b.desired) {
+	if desired.Processor.DropUnusedFields {
+		if helper.UseIPFIX(desired) {
 			lastStage = lastStage.TransformFilter("filter", api.TransformFilter{
 				Rules: filters.GetOVSGoflowUnusedRules(),
 			})
@@ -340,17 +348,17 @@ func (b *builder) addTransformStages(stage *config.PipelineBuilderStage) (*corev
 	}
 
 	// Connection tracking stage (only if OutputRecordTypes is set to ALL)
-	if b.desired.Processor.OutputRecordTypes != nil && *b.desired.Processor.OutputRecordTypes == flowslatest.OutputRecordAll {
+	if desired.Processor.OutputRecordTypes != nil && *desired.Processor.OutputRecordTypes == flowslatest.OutputRecordAll {
 		indexFields = append(indexFields, constants.LokiConnectionIndexFields...)
 
 		endTimeout := conntrackEndTimeout
-		if b.desired.Processor.ConnectionEndTimeout != nil {
-			endTimeout = b.desired.Processor.ConnectionEndTimeout.Duration
+		if desired.Processor.ConnectionEndTimeout != nil {
+			endTimeout = desired.Processor.ConnectionEndTimeout.Duration
 		}
 
 		heartbeatInterval := conntrackHeartbeatInterval
-		if b.desired.Processor.ConnectionHeartbeatInterval != nil {
-			heartbeatInterval = b.desired.Processor.ConnectionHeartbeatInterval.Duration
+		if desired.Processor.ConnectionHeartbeatInterval != nil {
+			heartbeatInterval = desired.Processor.ConnectionHeartbeatInterval.Duration
 		}
 
 		lastStage = lastStage.ConnTrack("extract_conntrack", api.ConnTrack{
@@ -441,33 +449,33 @@ func (b *builder) addTransformStages(stage *config.PipelineBuilderStage) (*corev
 	// loki stage (write) configuration
 	lokiWrite := api.WriteLoki{
 		Labels:         indexFields,
-		BatchSize:      int(b.desired.Loki.BatchSize),
-		BatchWait:      b.desired.Loki.BatchWait.ToUnstructured().(string),
-		MaxBackoff:     b.desired.Loki.MaxBackoff.ToUnstructured().(string),
-		MaxRetries:     int(b.desired.Loki.MaxRetries),
-		MinBackoff:     b.desired.Loki.MinBackoff.ToUnstructured().(string),
+		BatchSize:      int(desired.Loki.BatchSize),
+		BatchWait:      desired.Loki.BatchWait.ToUnstructured().(string),
+		MaxBackoff:     desired.Loki.MaxBackoff.ToUnstructured().(string),
+		MaxRetries:     int(desired.Loki.MaxRetries),
+		MinBackoff:     desired.Loki.MinBackoff.ToUnstructured().(string),
 		StaticLabels:   model.LabelSet{},
-		Timeout:        b.desired.Loki.Timeout.ToUnstructured().(string),
-		URL:            b.desired.Loki.URL,
+		Timeout:        desired.Loki.Timeout.ToUnstructured().(string),
+		URL:            desired.Loki.URL,
 		TimestampLabel: "TimeFlowEndMs",
 		TimestampScale: "1ms",
-		TenantID:       b.desired.Loki.TenantID,
+		TenantID:       desired.Loki.TenantID,
 	}
 
-	for k, v := range b.desired.Loki.StaticLabels {
+	for k, v := range desired.Loki.StaticLabels {
 		lokiWrite.StaticLabels[model.LabelName(k)] = model.LabelValue(v)
 	}
 
 	var authorization *promConfig.Authorization
-	if helper.LokiUseHostToken(&b.desired.Loki) || helper.LokiForwardUserToken(&b.desired.Loki) {
+	if helper.LokiUseHostToken(&desired.Loki) || helper.LokiForwardUserToken(&desired.Loki) {
 		authorization = &promConfig.Authorization{
 			Type:            "Bearer",
 			CredentialsFile: helper.TokensPath + constants.FLPName,
 		}
 	}
 
-	if b.desired.Loki.TLS.Enable {
-		if b.desired.Loki.TLS.InsecureSkipVerify {
+	if desired.Loki.TLS.Enable {
+		if desired.Loki.TLS.InsecureSkipVerify {
 			lokiWrite.ClientConfig = &promConfig.HTTPClientConfig{
 				Authorization: authorization,
 				TLSConfig: promConfig.TLSConfig{
@@ -478,7 +486,7 @@ func (b *builder) addTransformStages(stage *config.PipelineBuilderStage) (*corev
 			lokiWrite.ClientConfig = &promConfig.HTTPClientConfig{
 				Authorization: authorization,
 				TLSConfig: promConfig.TLSConfig{
-					CAFile: helper.GetCACertPath(&b.desired.Loki.TLS, lokiCerts),
+					CAFile: helper.GetCACertPath(&desired.Loki.TLS, lokiCerts),
 				},
 			}
 		}
@@ -490,12 +498,12 @@ func (b *builder) addTransformStages(stage *config.PipelineBuilderStage) (*corev
 	enrichedStage.WriteLoki("loki", lokiWrite)
 
 	// write on Stdout if logging trace enabled
-	if b.desired.Processor.LogLevel == "trace" {
+	if desired.Processor.LogLevel == "trace" {
 		enrichedStage.WriteStdout("stdout", api.WriteStdout{Format: "json"})
 	}
 
 	// obtain encode_prometheus stage from metrics_definitions
-	promMetrics, dashboard, err := b.obtainMetricsConfiguration()
+	promMetrics, dashboard, err := obtainMetricsConfiguration(desired)
 	if err != nil {
 		return nil, err
 	}
@@ -507,16 +515,19 @@ func (b *builder) addTransformStages(stage *config.PipelineBuilderStage) (*corev
 	}
 
 	enrichedStage.EncodePrometheus("prometheus", promEncode)
-	b.addCustomExportStages(&enrichedStage)
+	addCustomExportStages(&enrichedStage, desired)
 
-	dashboardConfigMap := b.makeMetricsDashboardConfigMap(dashboard)
-	return dashboardConfigMap, nil
+	return &GeneratedConfig{
+		Stages:           enrichedStage.GetStages(),
+		Params:           enrichedStage.GetStageParams(),
+		DashboardContent: dashboard,
+	}, nil
 }
 
-func (b *builder) makeMetricsDashboardConfigMap(dashboard string) *corev1.ConfigMap {
+func dashboardsConfigMap(dashboard string) *corev1.ConfigMap {
 	configMap := corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      b.dbConfigMapName(),
+			Name:      "foo (fixme)",
 			Namespace: "openshift-config-managed",
 			Labels: map[string]string{
 				"console.openshift.io/dashboard": "true",
@@ -528,8 +539,9 @@ func (b *builder) makeMetricsDashboardConfigMap(dashboard string) *corev1.Config
 	}
 	return &configMap
 }
-func (b *builder) addCustomExportStages(enrichedStage *config.PipelineBuilderStage) {
-	for i, exporter := range b.desired.Exporters {
+
+func addCustomExportStages(enrichedStage *config.PipelineBuilderStage, desired *flowslatest.FlowCollectorSpec) {
+	for i, exporter := range desired.Exporters {
 		if exporter.Type == flowslatest.KafkaExporter {
 			createKafkaWriteStage(fmt.Sprintf("kafka-export-%d", i), &exporter.Kafka, enrichedStage)
 		}

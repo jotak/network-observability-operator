@@ -89,6 +89,15 @@ func NewKafkaPipeline(name string, ingest api.IngestKafka) PipelineBuilderStage 
 	return PipelineBuilderStage{pipeline: &p, lastStage: name}
 }
 
+// NewPresetIngesterPipeline creates a new partial pipeline without ingest stage
+func NewPresetIngesterPipeline() PipelineBuilderStage {
+	p := pipeline{
+		stages: []Stage{},
+		config: []StageParam{},
+	}
+	return PipelineBuilderStage{pipeline: &p, lastStage: "preset-ingester"}
+}
+
 func (b *PipelineBuilderStage) next(name string, param StageParam) PipelineBuilderStage {
 	b.pipeline.stages = append(b.pipeline.stages, Stage{Name: name, Follows: b.lastStage})
 	b.pipeline.config = append(b.pipeline.config, param)

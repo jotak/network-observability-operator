@@ -89,7 +89,7 @@ func (r *flpMonolithReconciler) reconcile(ctx context.Context, desired *flowslat
 	}
 
 	builder := newMonolithBuilder(r.nobjMngr.Namespace, r.image, &desired.Spec, r.useOpenShiftSCC, r.CertWatcher)
-	newCM, configDigest, dbConfigMap, err := builder.configMap()
+	newCM, configDigest, dbConfigMap, err := builder.configMaps()
 	if err != nil {
 		return err
 	}

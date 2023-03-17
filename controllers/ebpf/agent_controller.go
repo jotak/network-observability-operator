@@ -2,11 +2,14 @@ package ebpf
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/netobserv/flowlogs-pipeline/pkg/config"
 	"github.com/netobserv/network-observability-operator/controllers/ebpf/internal/permissions"
+	"github.com/netobserv/network-observability-operator/controllers/flowlogspipeline"
 	"github.com/netobserv/network-observability-operator/controllers/operator"
 	"github.com/netobserv/network-observability-operator/pkg/discover"
 	v1 "k8s.io/api/apps/v1"
@@ -44,6 +47,7 @@ const (
 	envKafkaTLSUserKeyPath        = "KAFKA_TLS_USER_KEY_PATH"
 	envLogLevel                   = "LOG_LEVEL"
 	envDedupe                     = "DEDUPER"
+	envFLPConfig                  = "FLP_CONFIG"
 	dedupeDefault                 = "firstCome"
 	envDedupeJustMark             = "DEDUPER_JUST_MARK"
 	dedupeJustMarkDefault         = "true"
@@ -53,7 +57,7 @@ const (
 
 const (
 	exportKafka = "kafka"
-	exportGRPC  = "grpc"
+	exportFLP   = "direct-flp"
 )
 
 const kafkaCerts = "kafka-certs"
@@ -129,7 +133,10 @@ func (c *AgentController) Reconcile(
 	if err := c.permissions.Reconcile(ctx, &target.Spec.Agent.EBPF); err != nil {
 		return fmt.Errorf("reconciling permissions: %w", err)
 	}
-	desired := c.desired(target)
+	desired, err := c.desired(target)
+	if err != nil {
+		return err
+	}
 
 	// Annotate pod with certificate reference so that it is reloaded if modified
 	if err := c.client.CertWatcher.AnnotatePod(ctx, c.client, &desired.Spec.Template, kafkaCerts); err != nil {
@@ -165,9 +172,9 @@ func (c *AgentController) current(ctx context.Context) (*v1.DaemonSet, error) {
 	return &agentDS, nil
 }
 
-func (c *AgentController) desired(coll *flowslatest.FlowCollector) *v1.DaemonSet {
+func (c *AgentController) desired(coll *flowslatest.FlowCollector) (*v1.DaemonSet, error) {
 	if coll == nil || !helper.UseEBPF(&coll.Spec) {
-		return nil
+		return nil, nil
 	}
 	version := helper.ExtractVersion(c.config.EBPFAgentImage)
 	volumeMounts := []corev1.VolumeMount{}
@@ -176,6 +183,10 @@ func (c *AgentController) desired(coll *flowslatest.FlowCollector) *v1.DaemonSet
 		// NOTE: secrets need to be copied from the base netobserv namespace to the privileged one.
 		// This operation must currently be performed manually (run "make fix-ebpf-kafka-tls"). It could be automated here.
 		volumes, volumeMounts = helper.AppendCertVolumes(volumes, volumeMounts, &coll.Spec.Kafka.TLS, kafkaCerts, c.client.CertWatcher)
+	}
+	config, err := c.envConfig(coll)
+	if err != nil {
+		return nil, err
 	}
 
 	return &v1.DaemonSet{
@@ -208,16 +219,16 @@ func (c *AgentController) desired(coll *flowslatest.FlowCollector) *v1.DaemonSet
 						ImagePullPolicy: corev1.PullPolicy(coll.Spec.Agent.EBPF.ImagePullPolicy),
 						Resources:       coll.Spec.Agent.EBPF.Resources,
 						SecurityContext: c.securityContext(coll),
-						Env:             c.envConfig(coll),
+						Env:             config,
 						VolumeMounts:    volumeMounts,
 					}},
 				},
 			},
 		},
-	}
+	}, nil
 }
 
-func (c *AgentController) envConfig(coll *flowslatest.FlowCollector) []corev1.EnvVar {
+func (c *AgentController) envConfig(coll *flowslatest.FlowCollector) ([]corev1.EnvVar, error) {
 	var config []corev1.EnvVar
 	if coll.Spec.Agent.EBPF.CacheActiveTimeout != "" {
 		config = append(config, corev1.EnvVar{
@@ -292,23 +303,37 @@ func (c *AgentController) envConfig(coll *flowslatest.FlowCollector) []corev1.En
 			)
 		}
 	} else {
-		config = append(config, corev1.EnvVar{Name: envExport, Value: exportGRPC})
+		flpConfig, err := c.buildFLPConfig(&coll.Spec)
+		if err != nil {
+			return nil, err
+		}
+		config = append(config, corev1.EnvVar{Name: envExport, Value: exportFLP})
 		// When flowlogs-pipeline is deployed as a daemonset, each agent must send
 		// data to the pod that is deployed in the same host
 		config = append(config, corev1.EnvVar{
-			Name: envFlowsTargetHost,
-			ValueFrom: &corev1.EnvVarSource{
-				FieldRef: &corev1.ObjectFieldSelector{
-					APIVersion: "v1",
-					FieldPath:  "status.hostIP",
-				},
-			},
-		}, corev1.EnvVar{
-			Name:  envFlowsTargetPort,
-			Value: strconv.Itoa(int(coll.Spec.Processor.Port)),
+			Name:  envFLPConfig,
+			Value: flpConfig,
 		})
 	}
-	return config
+	return config, nil
+}
+
+func (c *AgentController) buildFLPConfig(desired *flowslatest.FlowCollectorSpec) (string, error) {
+	pipeline := config.NewPresetIngesterPipeline()
+	cfg, err := flowlogspipeline.AddNextStages(&pipeline, desired)
+	if err != nil {
+		return "", err
+	}
+	cfs := config.ConfigFileStruct{
+		Pipeline:        cfg.Stages,
+		Parameters:      cfg.Params,
+		MetricsSettings: config.MetricsSettings{},
+	}
+	b, err := json.Marshal(cfs)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 func (c *AgentController) requiredAction(current, desired *v1.DaemonSet) reconcileAction {

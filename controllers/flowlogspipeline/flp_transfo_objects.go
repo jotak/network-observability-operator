@@ -43,16 +43,17 @@ func (b *transfoBuilder) deployment(configDigest string) *appsv1.Deployment {
 	}
 }
 
-func (b *transfoBuilder) configMap() (*corev1.ConfigMap, string, *corev1.ConfigMap, error) {
-	stages, params, dashboardConfigMap, err := b.buildPipelineConfig()
+func (b *transfoBuilder) configMaps() (*corev1.ConfigMap, string, *corev1.ConfigMap, error) {
+	cfg, err := b.buildPipelineConfig()
 	if err != nil {
 		return nil, "", nil, err
 	}
-	configMap, digest, err := b.generic.configMap(stages, params)
-	return configMap, digest, dashboardConfigMap, err
+	configMap, digest, err := b.generic.configMap(cfg.Stages, cfg.Params)
+	dashboardsConfigMap := dashboardsConfigMap(cfg.DashboardContent)
+	return configMap, digest, dashboardsConfigMap, err
 }
 
-func (b *transfoBuilder) buildPipelineConfig() ([]config.Stage, []config.StageParam, *corev1.ConfigMap, error) {
+func (b *transfoBuilder) buildPipelineConfig() (*GeneratedConfig, error) {
 	// TODO in a later optimization patch: set ingester <-> transformer communication also via protobuf
 	// For now, we leave this communication via JSON and just setup protobuf ingestion when
 	// the transformer is communicating directly via eBPF agent
@@ -70,11 +71,7 @@ func (b *transfoBuilder) buildPipelineConfig() ([]config.Stage, []config.StagePa
 		PullMaxBytes:      b.generic.desired.Processor.KafkaConsumerBatchSize,
 	})
 
-	dashboardConfigMap, err := b.generic.addTransformStages(&pipeline)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	return pipeline.GetStages(), pipeline.GetStageParams(), dashboardConfigMap, nil
+	return b.generic.addNextStages(&pipeline)
 }
 
 func (b *transfoBuilder) newPromService() *corev1.Service {
