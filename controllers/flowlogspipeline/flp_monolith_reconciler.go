@@ -179,7 +179,7 @@ func (r *flpMonolithReconciler) reconcilePermissions(ctx context.Context, builde
 	if err := r.ReconcileClusterRole(ctx, cr); err != nil {
 		return err
 	}
-	cr = buildClusterRoleTransformer()
+	cr = BuildClusterRoleTransformer()
 	if err := r.ReconcileClusterRole(ctx, cr); err != nil {
 		return err
 	}

@@ -107,7 +107,7 @@ func (b *transfoBuilder) autoScaler() *ascv2.HorizontalPodAutoscaler {
 //+kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers,verbs=create;delete;patch;update;get;watch;list
 //+kubebuilder:rbac:groups=core,resources=pods;services;nodes,verbs=get;list;watch
 
-func buildClusterRoleTransformer() *rbacv1.ClusterRole {
+func BuildClusterRoleTransformer() *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: name(ConfKafkaTransformer),
