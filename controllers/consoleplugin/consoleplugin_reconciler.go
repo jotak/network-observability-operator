@@ -26,7 +26,7 @@ type pluginSpec = flowslatest.FlowCollectorConsolePlugin
 
 // CPReconciler reconciles the current console plugin state with the desired configuration
 type CPReconciler struct {
-	reconcilers.ClientHelper
+	helper.ClientHelper
 	nobjMngr      *reconcilers.NamespacedObjectManager
 	owned         ownedObjects
 	image         string
@@ -42,7 +42,7 @@ type ownedObjects struct {
 	serviceMonitor *monitoringv1.ServiceMonitor
 }
 
-func NewReconciler(cl reconcilers.ClientHelper, ns, prevNS, imageName string, availableAPIs *discover.AvailableAPIs) CPReconciler {
+func NewReconciler(cl helper.ClientHelper, ns, prevNS, imageName string, availableAPIs *discover.AvailableAPIs) CPReconciler {
 	owned := ownedObjects{
 		deployment:     &appsv1.Deployment{},
 		service:        &corev1.Service{},
@@ -89,24 +89,24 @@ func (r *CPReconciler) Reconcile(ctx context.Context, desired *flowslatest.FlowC
 		return err
 	}
 
-	if err = r.reconcilePlugin(ctx, builder, &desired.Spec); err != nil {
+	if err = r.reconcilePlugin(ctx, &builder, &desired.Spec); err != nil {
 		return err
 	}
 
-	cmDigest, err := r.reconcileConfigMap(ctx, builder, &desired.Spec)
+	cmDigest, err := r.reconcileConfigMap(ctx, &builder, &desired.Spec)
 	if err != nil {
 		return err
 	}
 
-	if err = r.reconcileDeployment(ctx, builder, &desired.Spec, cmDigest); err != nil {
+	if err = r.reconcileDeployment(ctx, &builder, &desired.Spec, cmDigest); err != nil {
 		return err
 	}
 
-	if err = r.reconcileService(ctx, builder, &desired.Spec); err != nil {
+	if err = r.reconcileService(ctx, &builder, &desired.Spec); err != nil {
 		return err
 	}
 
-	if err = r.reconcileHPA(ctx, builder, &desired.Spec); err != nil {
+	if err = r.reconcileHPA(ctx, &builder, &desired.Spec); err != nil {
 		return err
 	}
 
@@ -150,7 +150,7 @@ func (r *CPReconciler) reconcilePermissions(ctx context.Context, builder *builde
 	return nil
 }
 
-func (r *CPReconciler) reconcilePlugin(ctx context.Context, builder builder, desired *flowslatest.FlowCollectorSpec) error {
+func (r *CPReconciler) reconcilePlugin(ctx context.Context, builder *builder, desired *flowslatest.FlowCollectorSpec) error {
 	// Console plugin is cluster-scope (it's not deployed in our namespace) however it must still be updated if our namespace changes
 	oldPlg := osv1alpha1.ConsolePlugin{}
 	pluginExists := true
@@ -177,7 +177,7 @@ func (r *CPReconciler) reconcilePlugin(ctx context.Context, builder builder, des
 	return nil
 }
 
-func (r *CPReconciler) reconcileConfigMap(ctx context.Context, builder builder, desired *flowslatest.FlowCollectorSpec) (string, error) {
+func (r *CPReconciler) reconcileConfigMap(ctx context.Context, builder *builder, desired *flowslatest.FlowCollectorSpec) (string, error) {
 	newCM, configDigest := builder.configMap()
 	if !r.nobjMngr.Exists(r.owned.configMap) {
 		if err := r.CreateOwned(ctx, newCM); err != nil {
@@ -191,7 +191,7 @@ func (r *CPReconciler) reconcileConfigMap(ctx context.Context, builder builder, 
 	return configDigest, nil
 }
 
-func (r *CPReconciler) reconcileDeployment(ctx context.Context, builder builder, desired *flowslatest.FlowCollectorSpec, cmDigest string) error {
+func (r *CPReconciler) reconcileDeployment(ctx context.Context, builder *builder, desired *flowslatest.FlowCollectorSpec, cmDigest string) error {
 	report := helper.NewChangeReport("Console deployment")
 	defer report.LogIfNeeded(ctx)
 
@@ -210,7 +210,7 @@ func (r *CPReconciler) reconcileDeployment(ctx context.Context, builder builder,
 	return nil
 }
 
-func (r *CPReconciler) reconcileService(ctx context.Context, builder builder, desired *flowslatest.FlowCollectorSpec) error {
+func (r *CPReconciler) reconcileService(ctx context.Context, builder *builder, desired *flowslatest.FlowCollectorSpec) error {
 	report := helper.NewChangeReport("Console service")
 	defer report.LogIfNeeded(ctx)
 
@@ -234,7 +234,7 @@ func (r *CPReconciler) reconcileService(ctx context.Context, builder builder, de
 	return nil
 }
 
-func (r *CPReconciler) reconcileHPA(ctx context.Context, builder builder, desired *flowslatest.FlowCollectorSpec) error {
+func (r *CPReconciler) reconcileHPA(ctx context.Context, builder *builder, desired *flowslatest.FlowCollectorSpec) error {
 	report := helper.NewChangeReport("Console autoscaler")
 	defer report.LogIfNeeded(ctx)
 

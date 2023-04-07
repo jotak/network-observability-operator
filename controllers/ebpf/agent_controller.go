@@ -9,6 +9,8 @@ import (
 	"github.com/netobserv/network-observability-operator/controllers/ebpf/internal/permissions"
 	"github.com/netobserv/network-observability-operator/controllers/operator"
 	"github.com/netobserv/network-observability-operator/pkg/discover"
+	"github.com/netobserv/network-observability-operator/pkg/volumes"
+	"github.com/netobserv/network-observability-operator/pkg/watchers"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -19,7 +21,6 @@ import (
 
 	flowslatest "github.com/netobserv/network-observability-operator/api/v1beta1"
 	"github.com/netobserv/network-observability-operator/controllers/constants"
-	"github.com/netobserv/network-observability-operator/controllers/reconcilers"
 	"github.com/netobserv/network-observability-operator/pkg/helper"
 	"k8s.io/apimachinery/pkg/api/equality"
 )
@@ -56,7 +57,7 @@ const (
 	exportGRPC  = "grpc"
 )
 
-const kafkaCerts = "kafka-certs"
+// const kafkaCerts = "kafka-certs"
 const averageMessageSize = 100
 
 type reconcileAction int
@@ -71,30 +72,32 @@ const (
 // associated objects that are required to bind the proper permissions: namespace, service
 // accounts, SecurityContextConstraints...
 type AgentController struct {
-	client                      reconcilers.ClientHelper
-	baseNamespace               string
+	client                      helper.ClientHelper
 	privilegedNamespace         string
 	previousPrivilegedNamespace string
 	permissions                 permissions.Reconciler
 	config                      *operator.Config
+	volumes                     volumes.Builder
+	watcher                     *watchers.Watcher
 }
 
 func NewAgentController(
-	client reconcilers.ClientHelper,
+	client helper.ClientHelper,
 	baseNamespace string,
 	previousBaseNamespace string,
 	permissionsVendor *discover.Permissions,
 	config *operator.Config,
+	watcher *watchers.Watcher,
 ) *AgentController {
 	pns := baseNamespace + constants.EBPFPrivilegedNSSuffix
 	opns := previousBaseNamespace + constants.EBPFPrivilegedNSSuffix
 	return &AgentController{
 		client:                      client,
-		baseNamespace:               baseNamespace,
 		privilegedNamespace:         pns,
 		previousPrivilegedNamespace: opns,
 		permissions:                 permissions.NewReconciler(client, pns, opns, permissionsVendor),
 		config:                      config,
+		watcher:                     watcher,
 	}
 }
 
@@ -129,7 +132,10 @@ func (c *AgentController) Reconcile(
 	if err := c.permissions.Reconcile(ctx, &target.Spec.Agent.EBPF); err != nil {
 		return fmt.Errorf("reconciling permissions: %w", err)
 	}
-	desired := c.desired(target)
+	desired, err := c.desired(ctx, target)
+	if err != nil {
+		return err
+	}
 
 	switch c.requiredAction(current, desired) {
 	case actionCreate:
@@ -160,17 +166,15 @@ func (c *AgentController) current(ctx context.Context) (*v1.DaemonSet, error) {
 	return &agentDS, nil
 }
 
-func (c *AgentController) desired(coll *flowslatest.FlowCollector) *v1.DaemonSet {
+func (c *AgentController) desired(ctx context.Context, coll *flowslatest.FlowCollector) (*v1.DaemonSet, error) {
 	if coll == nil || !helper.UseEBPF(&coll.Spec) {
-		return nil
+		return nil, nil
 	}
 	version := helper.ExtractVersion(c.config.EBPFAgentImage)
-	volumeMounts := []corev1.VolumeMount{}
-	volumes := []corev1.Volume{}
-	if helper.UseKafka(&coll.Spec) && coll.Spec.Kafka.TLS.Enable {
-		// NOTE: secrets need to be copied from the base netobserv namespace to the privileged one.
-		// This operation must currently be performed manually (run "make fix-ebpf-kafka-tls"). It could be automated here.
-		volumes, volumeMounts = helper.AppendCertVolumes(volumes, volumeMounts, &coll.Spec.Kafka.TLS, kafkaCerts)
+	annotations := make(map[string]string)
+	env, err := c.envConfig(ctx, coll, annotations)
+	if err != nil {
+		return nil, err
 	}
 
 	return &v1.DaemonSet{
@@ -188,7 +192,8 @@ func (c *AgentController) desired(coll *flowslatest.FlowCollector) *v1.DaemonSet
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{"app": constants.EBPFAgentName},
+					Labels:      map[string]string{"app": constants.EBPFAgentName},
+					Annotations: annotations,
 				},
 				Spec: corev1.PodSpec{
 					// Allows deploying an instance in the master node
@@ -196,23 +201,23 @@ func (c *AgentController) desired(coll *flowslatest.FlowCollector) *v1.DaemonSet
 					ServiceAccountName: constants.EBPFServiceAccount,
 					HostNetwork:        true,
 					DNSPolicy:          corev1.DNSClusterFirstWithHostNet,
-					Volumes:            volumes,
+					Volumes:            c.volumes.GetVolumes(),
 					Containers: []corev1.Container{{
 						Name:            constants.EBPFAgentName,
 						Image:           c.config.EBPFAgentImage,
 						ImagePullPolicy: corev1.PullPolicy(coll.Spec.Agent.EBPF.ImagePullPolicy),
 						Resources:       coll.Spec.Agent.EBPF.Resources,
 						SecurityContext: c.securityContext(coll),
-						Env:             c.envConfig(coll),
-						VolumeMounts:    volumeMounts,
+						Env:             env,
+						VolumeMounts:    c.volumes.GetMounts(),
 					}},
 				},
 			},
 		},
-	}
+	}, nil
 }
 
-func (c *AgentController) envConfig(coll *flowslatest.FlowCollector) []corev1.EnvVar {
+func (c *AgentController) envConfig(ctx context.Context, coll *flowslatest.FlowCollector, annots map[string]string) ([]corev1.EnvVar, error) {
 	var config []corev1.EnvVar
 	if coll.Spec.Agent.EBPF.CacheActiveTimeout != "" {
 		config = append(config, corev1.EnvVar{
@@ -278,12 +283,22 @@ func (c *AgentController) envConfig(coll *flowslatest.FlowCollector) []corev1.En
 			corev1.EnvVar{Name: envKafkaBatchMessages, Value: strconv.Itoa(coll.Spec.Agent.EBPF.KafkaBatchSize / averageMessageSize)},
 		)
 		if coll.Spec.Kafka.TLS.Enable {
+			// Annotate pod with certificate reference so that it is reloaded if modified
+			// If user cert is provided, it will use mTLS. Else, simple TLS (the userDigest and paths will be empty)
+			caDigest, userDigest, err := c.watcher.ProcessMTLSCerts(ctx, c.client, &coll.Spec.Kafka.TLS, c.privilegedNamespace)
+			if err != nil {
+				return nil, err
+			}
+			annots[watchers.Annotation("kafka-ca")] = caDigest
+			annots[watchers.Annotation("kafka-user")] = userDigest
+
+			caPath, userCertPath, userKeyPath := c.volumes.AddMutualTLSCertificates(&coll.Spec.Kafka.TLS, "kafka-certs")
 			config = append(config,
 				corev1.EnvVar{Name: envKafkaEnableTLS, Value: "true"},
 				corev1.EnvVar{Name: envKafkaTLSInsecureSkipVerify, Value: strconv.FormatBool(coll.Spec.Kafka.TLS.InsecureSkipVerify)},
-				corev1.EnvVar{Name: envKafkaTLSCACertPath, Value: helper.GetCACertPath(&coll.Spec.Kafka.TLS, kafkaCerts)},
-				corev1.EnvVar{Name: envKafkaTLSUserCertPath, Value: helper.GetUserCertPath(&coll.Spec.Kafka.TLS, kafkaCerts)},
-				corev1.EnvVar{Name: envKafkaTLSUserKeyPath, Value: helper.GetUserKeyPath(&coll.Spec.Kafka.TLS, kafkaCerts)},
+				corev1.EnvVar{Name: envKafkaTLSCACertPath, Value: caPath},
+				corev1.EnvVar{Name: envKafkaTLSUserCertPath, Value: userCertPath},
+				corev1.EnvVar{Name: envKafkaTLSUserKeyPath, Value: userKeyPath},
 			)
 		}
 	} else {
@@ -303,7 +318,7 @@ func (c *AgentController) envConfig(coll *flowslatest.FlowCollector) []corev1.En
 			Value: strconv.Itoa(int(coll.Spec.Processor.Port)),
 		})
 	}
-	return config
+	return config, nil
 }
 
 func (c *AgentController) requiredAction(current, desired *v1.DaemonSet) reconcileAction {

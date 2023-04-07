@@ -1001,6 +1001,52 @@ spec:
                           default: ""
                           description: address of the Kafka server
                           type: string
+                        sasl:
+                          description: sasl authentication configuration. Note that,
+                            when eBPF agents are used, the SASL secret needs to be
+                            copied in the agent namespace (by default it's netobserv-privileged).
+                          properties:
+                            secret:
+                              description: reference to the secret containing the
+                                SASL password
+                              properties:
+                                key:
+                                  description: file name reference within secret or
+                                    config map
+                                  type: string
+                                name:
+                                  description: name of the config map or secret to
+                                    reference
+                                  type: string
+                                namespace:
+                                  description: namespace of the config map or secret
+                                    containing certificates. If omitted, assumes same
+                                    namespace as where NetObserv is deployed. If the
+                                    namespace is different, the config map or the
+                                    secret will be copied so that it can be mounted
+                                    as required.
+                                  type: string
+                                type:
+                                  description: 'type for the reference: "configmap"
+                                    or "secret"'
+                                  enum:
+                                  - configmap
+                                  - secret
+                                  type: string
+                              type: object
+                            type:
+                              default: DISABLED
+                              description: type is the type of SASL authentication
+                                to use, or DISABLED if SASL is not used
+                              enum:
+                              - DISABLED
+                              - PLAIN
+                              - SCRAM-SHA512
+                              type: string
+                            username:
+                              description: username to provide for SASL authentication
+                              type: string
+                          type: object
                         tls:
                           description: tls client configuration. When using TLS, verify
                             that the address matches the Kafka port used for TLS,
@@ -1024,6 +1070,15 @@ spec:
                                 name:
                                   description: name of the config map or secret containing
                                     certificates
+                                  type: string
+                                namespace:
+                                  default: ""
+                                  description: namespace of the config map or secret
+                                    containing certificates. If omitted, assumes same
+                                    namespace as where NetObserv is deployed. If the
+                                    namespace is different, the config map or the
+                                    secret will be copied so that it can be mounted
+                                    as required.
                                   type: string
                                 type:
                                   description: 'type for the certificate reference:
@@ -1060,6 +1115,15 @@ spec:
                                 name:
                                   description: name of the config map or secret containing
                                     certificates
+                                  type: string
+                                namespace:
+                                  default: ""
+                                  description: namespace of the config map or secret
+                                    containing certificates. If omitted, assumes same
+                                    namespace as where NetObserv is deployed. If the
+                                    namespace is different, the config map or the
+                                    secret will be copied so that it can be mounted
+                                    as required.
                                   type: string
                                 type:
                                   description: 'type for the certificate reference:
@@ -1098,6 +1162,48 @@ spec:
                     default: ""
                     description: address of the Kafka server
                     type: string
+                  sasl:
+                    description: sasl authentication configuration. Note that, when
+                      eBPF agents are used, the SASL secret needs to be copied in
+                      the agent namespace (by default it's netobserv-privileged).
+                    properties:
+                      secret:
+                        description: reference to the secret containing the SASL password
+                        properties:
+                          key:
+                            description: file name reference within secret or config
+                              map
+                            type: string
+                          name:
+                            description: name of the config map or secret to reference
+                            type: string
+                          namespace:
+                            description: namespace of the config map or secret containing
+                              certificates. If omitted, assumes same namespace as
+                              where NetObserv is deployed. If the namespace is different,
+                              the config map or the secret will be copied so that
+                              it can be mounted as required.
+                            type: string
+                          type:
+                            description: 'type for the reference: "configmap" or "secret"'
+                            enum:
+                            - configmap
+                            - secret
+                            type: string
+                        type: object
+                      type:
+                        default: DISABLED
+                        description: type is the type of SASL authentication to use,
+                          or DISABLED if SASL is not used
+                        enum:
+                        - DISABLED
+                        - PLAIN
+                        - SCRAM-SHA512
+                        type: string
+                      username:
+                        description: username to provide for SASL authentication
+                        type: string
+                    type: object
                   tls:
                     description: tls client configuration. When using TLS, verify
                       that the address matches the Kafka port used for TLS, generally
@@ -1120,6 +1226,14 @@ spec:
                           name:
                             description: name of the config map or secret containing
                               certificates
+                            type: string
+                          namespace:
+                            default: ""
+                            description: namespace of the config map or secret containing
+                              certificates. If omitted, assumes same namespace as
+                              where NetObserv is deployed. If the namespace is different,
+                              the config map or the secret will be copied so that
+                              it can be mounted as required.
                             type: string
                           type:
                             description: 'type for the certificate reference: "configmap"
@@ -1156,6 +1270,14 @@ spec:
                           name:
                             description: name of the config map or secret containing
                               certificates
+                            type: string
+                          namespace:
+                            default: ""
+                            description: namespace of the config map or secret containing
+                              certificates. If omitted, assumes same namespace as
+                              where NetObserv is deployed. If the namespace is different,
+                              the config map or the secret will be copied so that
+                              it can be mounted as required.
                             type: string
                           type:
                             description: 'type for the certificate reference: "configmap"
@@ -1275,6 +1397,14 @@ spec:
                             description: name of the config map or secret containing
                               certificates
                             type: string
+                          namespace:
+                            default: ""
+                            description: namespace of the config map or secret containing
+                              certificates. If omitted, assumes same namespace as
+                              where NetObserv is deployed. If the namespace is different,
+                              the config map or the secret will be copied so that
+                              it can be mounted as required.
+                            type: string
                           type:
                             description: 'type for the certificate reference: "configmap"
                               or "secret"'
@@ -1310,6 +1440,14 @@ spec:
                           name:
                             description: name of the config map or secret containing
                               certificates
+                            type: string
+                          namespace:
+                            default: ""
+                            description: namespace of the config map or secret containing
+                              certificates. If omitted, assumes same namespace as
+                              where NetObserv is deployed. If the namespace is different,
+                              the config map or the secret will be copied so that
+                              it can be mounted as required.
                             type: string
                           type:
                             description: 'type for the certificate reference: "configmap"
@@ -1992,6 +2130,15 @@ spec:
                                   name:
                                     description: name of the config map or secret
                                       containing certificates
+                                    type: string
+                                  namespace:
+                                    default: ""
+                                    description: namespace of the config map or secret
+                                      containing certificates. If omitted, assumes
+                                      same namespace as where NetObserv is deployed.
+                                      If the namespace is different, the config map
+                                      or the secret will be copied so that it can
+                                      be mounted as required.
                                     type: string
                                   type:
                                     description: 'type for the certificate reference:
@@ -3128,6 +3275,52 @@ spec:
                           default: ""
                           description: address of the Kafka server
                           type: string
+                        sasl:
+                          description: sasl authentication configuration. Note that,
+                            when eBPF agents are used, the SASL secret needs to be
+                            copied in the agent namespace (by default it's netobserv-privileged).
+                          properties:
+                            secret:
+                              description: reference to the secret containing the
+                                SASL password
+                              properties:
+                                key:
+                                  description: file name reference within secret or
+                                    config map
+                                  type: string
+                                name:
+                                  description: name of the config map or secret to
+                                    reference
+                                  type: string
+                                namespace:
+                                  description: namespace of the config map or secret
+                                    containing certificates. If omitted, assumes same
+                                    namespace as where NetObserv is deployed. If the
+                                    namespace is different, the config map or the
+                                    secret will be copied so that it can be mounted
+                                    as required.
+                                  type: string
+                                type:
+                                  description: 'type for the reference: "configmap"
+                                    or "secret"'
+                                  enum:
+                                  - configmap
+                                  - secret
+                                  type: string
+                              type: object
+                            type:
+                              default: DISABLED
+                              description: type is the type of SASL authentication
+                                to use, or DISABLED if SASL is not used
+                              enum:
+                              - DISABLED
+                              - PLAIN
+                              - SCRAM-SHA512
+                              type: string
+                            username:
+                              description: username to provide for SASL authentication
+                              type: string
+                          type: object
                         tls:
                           description: tls client configuration. When using TLS, verify
                             that the address matches the Kafka port used for TLS,
@@ -3151,6 +3344,15 @@ spec:
                                 name:
                                   description: name of the config map or secret containing
                                     certificates
+                                  type: string
+                                namespace:
+                                  default: ""
+                                  description: namespace of the config map or secret
+                                    containing certificates. If omitted, assumes same
+                                    namespace as where NetObserv is deployed. If the
+                                    namespace is different, the config map or the
+                                    secret will be copied so that it can be mounted
+                                    as required.
                                   type: string
                                 type:
                                   description: 'type for the certificate reference:
@@ -3187,6 +3389,15 @@ spec:
                                 name:
                                   description: name of the config map or secret containing
                                     certificates
+                                  type: string
+                                namespace:
+                                  default: ""
+                                  description: namespace of the config map or secret
+                                    containing certificates. If omitted, assumes same
+                                    namespace as where NetObserv is deployed. If the
+                                    namespace is different, the config map or the
+                                    secret will be copied so that it can be mounted
+                                    as required.
                                   type: string
                                 type:
                                   description: 'type for the certificate reference:
@@ -3225,6 +3436,48 @@ spec:
                     default: ""
                     description: address of the Kafka server
                     type: string
+                  sasl:
+                    description: sasl authentication configuration. Note that, when
+                      eBPF agents are used, the SASL secret needs to be copied in
+                      the agent namespace (by default it's netobserv-privileged).
+                    properties:
+                      secret:
+                        description: reference to the secret containing the SASL password
+                        properties:
+                          key:
+                            description: file name reference within secret or config
+                              map
+                            type: string
+                          name:
+                            description: name of the config map or secret to reference
+                            type: string
+                          namespace:
+                            description: namespace of the config map or secret containing
+                              certificates. If omitted, assumes same namespace as
+                              where NetObserv is deployed. If the namespace is different,
+                              the config map or the secret will be copied so that
+                              it can be mounted as required.
+                            type: string
+                          type:
+                            description: 'type for the reference: "configmap" or "secret"'
+                            enum:
+                            - configmap
+                            - secret
+                            type: string
+                        type: object
+                      type:
+                        default: DISABLED
+                        description: type is the type of SASL authentication to use,
+                          or DISABLED if SASL is not used
+                        enum:
+                        - DISABLED
+                        - PLAIN
+                        - SCRAM-SHA512
+                        type: string
+                      username:
+                        description: username to provide for SASL authentication
+                        type: string
+                    type: object
                   tls:
                     description: tls client configuration. When using TLS, verify
                       that the address matches the Kafka port used for TLS, generally
@@ -3247,6 +3500,14 @@ spec:
                           name:
                             description: name of the config map or secret containing
                               certificates
+                            type: string
+                          namespace:
+                            default: ""
+                            description: namespace of the config map or secret containing
+                              certificates. If omitted, assumes same namespace as
+                              where NetObserv is deployed. If the namespace is different,
+                              the config map or the secret will be copied so that
+                              it can be mounted as required.
                             type: string
                           type:
                             description: 'type for the certificate reference: "configmap"
@@ -3283,6 +3544,14 @@ spec:
                           name:
                             description: name of the config map or secret containing
                               certificates
+                            type: string
+                          namespace:
+                            default: ""
+                            description: namespace of the config map or secret containing
+                              certificates. If omitted, assumes same namespace as
+                              where NetObserv is deployed. If the namespace is different,
+                              the config map or the secret will be copied so that
+                              it can be mounted as required.
                             type: string
                           type:
                             description: 'type for the certificate reference: "configmap"
@@ -3383,6 +3652,14 @@ spec:
                             description: name of the config map or secret containing
                               certificates
                             type: string
+                          namespace:
+                            default: ""
+                            description: namespace of the config map or secret containing
+                              certificates. If omitted, assumes same namespace as
+                              where NetObserv is deployed. If the namespace is different,
+                              the config map or the secret will be copied so that
+                              it can be mounted as required.
+                            type: string
                           type:
                             description: 'type for the certificate reference: "configmap"
                               or "secret"'
@@ -3418,6 +3695,14 @@ spec:
                           name:
                             description: name of the config map or secret containing
                               certificates
+                            type: string
+                          namespace:
+                            default: ""
+                            description: namespace of the config map or secret containing
+                              certificates. If omitted, assumes same namespace as
+                              where NetObserv is deployed. If the namespace is different,
+                              the config map or the secret will be copied so that
+                              it can be mounted as required.
                             type: string
                           type:
                             description: 'type for the certificate reference: "configmap"
@@ -3468,6 +3753,14 @@ spec:
                             description: name of the config map or secret containing
                               certificates
                             type: string
+                          namespace:
+                            default: ""
+                            description: namespace of the config map or secret containing
+                              certificates. If omitted, assumes same namespace as
+                              where NetObserv is deployed. If the namespace is different,
+                              the config map or the secret will be copied so that
+                              it can be mounted as required.
+                            type: string
                           type:
                             description: 'type for the certificate reference: "configmap"
                               or "secret"'
@@ -3503,6 +3796,14 @@ spec:
                           name:
                             description: name of the config map or secret containing
                               certificates
+                            type: string
+                          namespace:
+                            default: ""
+                            description: namespace of the config map or secret containing
+                              certificates. If omitted, assumes same namespace as
+                              where NetObserv is deployed. If the namespace is different,
+                              the config map or the secret will be copied so that
+                              it can be mounted as required.
                             type: string
                           type:
                             description: 'type for the certificate reference: "configmap"
@@ -4225,6 +4526,15 @@ spec:
                                   name:
                                     description: name of the config map or secret
                                       containing certificates
+                                    type: string
+                                  namespace:
+                                    default: ""
+                                    description: namespace of the config map or secret
+                                      containing certificates. If omitted, assumes
+                                      same namespace as where NetObserv is deployed.
+                                      If the namespace is different, the config map
+                                      or the secret will be copied so that it can
+                                      be mounted as required.
                                     type: string
                                   type:
                                     description: 'type for the certificate reference:

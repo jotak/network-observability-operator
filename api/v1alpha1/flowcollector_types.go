@@ -231,6 +231,11 @@ type FlowCollectorKafka struct {
 	// Note that, when eBPF agents are used, Kafka certificate needs to be copied in the agent namespace (by default it's netobserv-privileged).
 	// +optional
 	TLS ClientTLS `json:"tls"`
+
+	// sasl authentication configuration.
+	// Note that, when eBPF agents are used, the SASL secret needs to be copied in the agent namespace (by default it's netobserv-privileged).
+	// +optional
+	SASL SASLConfig `json:"sasl"`
 }
 
 const (
@@ -580,7 +585,7 @@ const (
 type CertificateReference struct {
 	//+kubebuilder:validation:Enum=configmap;secret
 	// type for the certificate reference: "configmap" or "secret"
-	Type string `json:"type,omitempty"`
+	Type MountableType `json:"type,omitempty"`
 
 	// name of the config map or secret containing certificates
 	Name string `json:"name,omitempty"`
@@ -591,6 +596,12 @@ type CertificateReference struct {
 	// certKey defines the path to the certificate private key file name within the config map or secret. Omit when the key is not necessary.
 	// +optional
 	CertKey string `json:"certKey,omitempty"`
+
+	// namespace of the config map or secret containing certificates. If omitted, assumes same namespace as where NetObserv is deployed.
+	// If the namespace is different, the config map or the secret will be copied so that it can be mounted as required.
+	// +optional
+	//+kubebuilder:default:=""
+	Namespace string `json:"namespace,omitempty"`
 }
 
 // ClientTLS defines TLS client configuration
@@ -610,6 +621,51 @@ type ClientTLS struct {
 	// userCert defines the user certificate reference, used for mTLS (you can ignore it when using regular, one-way TLS)
 	// +optional
 	UserCert CertificateReference `json:"userCert,omitempty"`
+}
+
+const (
+	SASLDisabled    = "DISABLED"
+	SASLPlain       = "PLAIN"
+	SASLScramSHA512 = "SCRAM-SHA512"
+)
+
+// SASLConfig defines SASL configuration
+type SASLConfig struct {
+	//+kubebuilder:validation:Enum=DISABLED;PLAIN;SCRAM-SHA512
+	//+kubebuilder:default:=DISABLED
+	// type is the type of SASL authentication to use, or DISABLED if SASL is not used
+	Type string `json:"type,omitempty"`
+
+	// username to provide for SASL authentication
+	Username string `json:"username,omitempty"`
+
+	// reference to the secret containing the SASL password
+	Secret ConfigOrSecret `json:"secret,omitempty"`
+}
+
+type MountableType string
+
+const (
+	RefTypeSecret    MountableType = "secret"
+	RefTypeConfigMap MountableType = "configmap"
+)
+
+// This should replace CertificateReference in the next CRD version (breaking change)
+type ConfigOrSecret struct {
+	//+kubebuilder:validation:Enum=configmap;secret
+	// type for the reference: "configmap" or "secret"
+	Type MountableType `json:"type,omitempty"`
+
+	// name of the config map or secret to reference
+	Name string `json:"name,omitempty"`
+
+	// namespace of the config map or secret containing certificates. If omitted, assumes same namespace as where NetObserv is deployed.
+	// If the namespace is different, the config map or the secret will be copied so that it can be mounted as required.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+
+	// file name reference within secret or config map
+	Filename string `json:"key,omitempty"`
 }
 
 // DebugConfig allows tweaking some aspects of the internal configuration of the agent and FLP.

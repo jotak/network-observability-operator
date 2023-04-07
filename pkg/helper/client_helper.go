@@ -1,11 +1,10 @@
-package reconcilers
+package helper
 
 import (
 	"context"
 	"fmt"
 	"reflect"
 
-	"github.com/netobserv/network-observability-operator/pkg/helper"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -92,7 +91,7 @@ func (c *ClientHelper) ReconcileClusterRoleBinding(ctx context.Context, desired 
 		}
 		return fmt.Errorf("can't reconcile ClusterRoleBinding %s: %w", desired.Name, err)
 	}
-	if helper.IsSubSet(actual.Labels, desired.Labels) &&
+	if IsSubSet(actual.Labels, desired.Labels) &&
 		actual.RoleRef == desired.RoleRef &&
 		reflect.DeepEqual(actual.Subjects, desired.Subjects) {
 		if actual.RoleRef != desired.RoleRef {
@@ -119,7 +118,7 @@ func (c *ClientHelper) ReconcileRoleBinding(ctx context.Context, desired *rbacv1
 		}
 		return fmt.Errorf("can't reconcile RoleBinding %s: %w", desired.Name, err)
 	}
-	if helper.IsSubSet(actual.Labels, desired.Labels) &&
+	if IsSubSet(actual.Labels, desired.Labels) &&
 		actual.RoleRef == desired.RoleRef &&
 		reflect.DeepEqual(actual.Subjects, desired.Subjects) {
 		if actual.RoleRef != desired.RoleRef {
@@ -147,7 +146,7 @@ func (c *ClientHelper) ReconcileClusterRole(ctx context.Context, desired *rbacv1
 		return fmt.Errorf("can't reconcile ClusterRole %s: %w", desired.Name, err)
 	}
 
-	if helper.IsSubSet(actual.Labels, desired.Labels) &&
+	if IsSubSet(actual.Labels, desired.Labels) &&
 		reflect.DeepEqual(actual.Rules, desired.Rules) {
 		// cluster role already reconciled. Exiting
 		return nil
@@ -165,7 +164,7 @@ func (c *ClientHelper) ReconcileRole(ctx context.Context, desired *rbacv1.Role) 
 		return fmt.Errorf("can't reconcile Role %s: %w", desired.Name, err)
 	}
 
-	if helper.IsSubSet(actual.Labels, desired.Labels) &&
+	if IsSubSet(actual.Labels, desired.Labels) &&
 		reflect.DeepEqual(actual.Rules, desired.Rules) {
 		// role already reconciled. Exiting
 		return nil
@@ -183,7 +182,7 @@ func (c *ClientHelper) ReconcileConfigMap(ctx context.Context, desired *corev1.C
 		return fmt.Errorf("can't reconcile Configmap %s: %w", desired.Name, err)
 	}
 
-	if helper.IsSubSet(actual.Labels, desired.Labels) &&
+	if IsSubSet(actual.Labels, desired.Labels) &&
 		reflect.DeepEqual(actual.Data, desired.Data) {
 		// configmap already reconciled. Exiting
 		return nil

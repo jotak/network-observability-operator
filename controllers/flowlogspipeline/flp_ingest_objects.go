@@ -63,7 +63,7 @@ func (b *ingestBuilder) buildPipelineConfig() ([]config.Stage, []config.StagePar
 		})
 	}
 
-	pipeline = createKafkaWriteStage("kafka-write", &b.generic.desired.Kafka, &pipeline)
+	pipeline = b.generic.createKafkaWriteStage("kafka-write", &b.generic.desired.Kafka, &pipeline)
 
 	return pipeline.GetStages(), pipeline.GetStageParams(), nil
 }

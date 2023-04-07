@@ -15,18 +15,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	flowslatest "github.com/netobserv/network-observability-operator/api/v1beta1"
-	"github.com/netobserv/network-observability-operator/controllers/reconcilers"
 	"github.com/netobserv/network-observability-operator/pkg/helper"
 )
 
 type FlowsConfigOVNKController struct {
 	namespace string
 	config    flowslatest.OVNKubernetesConfig
-	client    reconcilers.ClientHelper
+	client    helper.ClientHelper
 	lookupIP  func(string) ([]net.IP, error)
 }
 
-func NewFlowsConfigOVNKController(client reconcilers.ClientHelper, namespace string, config flowslatest.OVNKubernetesConfig, lookupIP func(string) ([]net.IP, error)) *FlowsConfigOVNKController {
+func NewFlowsConfigOVNKController(client helper.ClientHelper, namespace string, config flowslatest.OVNKubernetesConfig, lookupIP func(string) ([]net.IP, error)) *FlowsConfigOVNKController {
 	return &FlowsConfigOVNKController{
 		client:    client,
 		namespace: namespace,

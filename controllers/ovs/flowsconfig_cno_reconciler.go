@@ -12,7 +12,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	flowslatest "github.com/netobserv/network-observability-operator/api/v1beta1"
-	"github.com/netobserv/network-observability-operator/controllers/reconcilers"
 	"github.com/netobserv/network-observability-operator/pkg/helper"
 )
 
@@ -20,11 +19,11 @@ type FlowsConfigCNOController struct {
 	ovsConfigMapName   string
 	collectorNamespace string
 	cnoNamespace       string
-	client             reconcilers.ClientHelper
+	client             helper.ClientHelper
 	lookupIP           func(string) ([]net.IP, error)
 }
 
-func NewFlowsConfigCNOController(client reconcilers.ClientHelper,
+func NewFlowsConfigCNOController(client helper.ClientHelper,
 	collectorNamespace, cnoNamespace, ovsConfigMapName string,
 	lookupIP func(string) ([]net.IP, error)) *FlowsConfigCNOController {
 	return &FlowsConfigCNOController{

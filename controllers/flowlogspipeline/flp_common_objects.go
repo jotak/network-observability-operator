@@ -24,6 +24,7 @@ import (
 	"github.com/netobserv/network-observability-operator/controllers/constants"
 	"github.com/netobserv/network-observability-operator/pkg/filters"
 	"github.com/netobserv/network-observability-operator/pkg/helper"
+	"github.com/netobserv/network-observability-operator/pkg/volumes"
 )
 
 const (
@@ -31,9 +32,6 @@ const (
 	configPath                 = "/etc/flowlogs-pipeline"
 	configFile                 = "config.json"
 	metricsConfigDir           = "metrics_definitions"
-	kafkaCerts                 = "kafka-certs"
-	lokiCerts                  = "loki-certs"
-	promCerts                  = "prom-certs"
 	lokiToken                  = "loki-token"
 	healthServiceName          = "health"
 	prometheusServiceName      = "prometheus"
@@ -79,6 +77,7 @@ type builder struct {
 	confKind        ConfKind
 	useOpenShiftSCC bool
 	image           string
+	volumes         volumes.Builder
 }
 
 func newBuilder(ns, image string, desired *flowslatest.FlowCollectorSpec, ck ConfKind, useOpenShiftSCC bool) builder {
@@ -166,11 +165,11 @@ func (b *builder) podTemplate(hasHostPort, hasLokiInterface, hostNetwork bool, c
 		})
 	}
 
-	volumeMounts := []corev1.VolumeMount{{
+	volumeMounts := b.volumes.AppendMounts([]corev1.VolumeMount{{
 		MountPath: configPath,
 		Name:      configVolume,
-	}}
-	volumes := []corev1.Volume{{
+	}})
+	volumes := b.volumes.AppendVolumes([]corev1.Volume{{
 		Name: configVolume,
 		VolumeSource: corev1.VolumeSource{
 			ConfigMap: &corev1.ConfigMapVolumeSource{
@@ -179,24 +178,7 @@ func (b *builder) podTemplate(hasHostPort, hasLokiInterface, hostNetwork bool, c
 				},
 			},
 		},
-	}}
-
-	if helper.UseKafka(b.desired) && b.desired.Kafka.TLS.Enable {
-		volumes, volumeMounts = helper.AppendCertVolumes(volumes, volumeMounts, &b.desired.Kafka.TLS, kafkaCerts)
-	}
-
-	if hasLokiInterface {
-		if b.desired.Loki.TLS.Enable && !b.desired.Loki.TLS.InsecureSkipVerify {
-			volumes, volumeMounts = helper.AppendCertVolumes(volumes, volumeMounts, &b.desired.Loki.TLS, lokiCerts)
-		}
-		if helper.LokiUseHostToken(&b.desired.Loki) || helper.LokiForwardUserToken(&b.desired.Loki) {
-			volumes, volumeMounts = helper.AppendTokenVolume(volumes, volumeMounts, lokiToken, constants.FLPName)
-		}
-	}
-
-	if b.desired.Processor.Metrics.Server.TLS.Type != flowslatest.ServerTLSDisabled {
-		volumes, volumeMounts = helper.AppendSingleCertVolumes(volumes, volumeMounts, b.promTLS, promCerts)
-	}
+	}})
 
 	var envs []corev1.EnvVar
 	// we need to sort env map to keep idempotency,
@@ -465,7 +447,7 @@ func (b *builder) addTransformStages(stage *config.PipelineBuilderStage) (*corev
 	if helper.LokiUseHostToken(&b.desired.Loki) || helper.LokiForwardUserToken(&b.desired.Loki) {
 		authorization = &promConfig.Authorization{
 			Type:            "Bearer",
-			CredentialsFile: helper.TokensPath + constants.FLPName,
+			CredentialsFile: constants.TokensPath + constants.FLPName,
 		}
 	}
 
@@ -478,10 +460,11 @@ func (b *builder) addTransformStages(stage *config.PipelineBuilderStage) (*corev
 				},
 			}
 		} else {
+			caPath := b.volumes.AddCACertificate(&b.desired.Loki.TLS, "loki-certs")
 			lokiWrite.ClientConfig = &promConfig.HTTPClientConfig{
 				Authorization: authorization,
 				TLSConfig: promConfig.TLSConfig{
-					CAFile: helper.GetCACertPath(&b.desired.Loki.TLS, lokiCerts),
+					CAFile: caPath,
 				},
 			}
 		}
@@ -536,29 +519,49 @@ func (b *builder) makeMetricsDashboardConfigMap(dashboard string) *corev1.Config
 func (b *builder) addCustomExportStages(enrichedStage *config.PipelineBuilderStage) {
 	for i, exporter := range b.desired.Exporters {
 		if exporter.Type == flowslatest.KafkaExporter {
-			createKafkaWriteStage(fmt.Sprintf("kafka-export-%d", i), &exporter.Kafka, enrichedStage)
+			b.createKafkaWriteStage(fmt.Sprintf("kafka-export-%d", i), &exporter.Kafka, enrichedStage)
 		}
 	}
 }
 
-func createKafkaWriteStage(name string, spec *flowslatest.FlowCollectorKafka, fromStage *config.PipelineBuilderStage) config.PipelineBuilderStage {
+func (b *builder) createKafkaWriteStage(name string, spec *flowslatest.FlowCollectorKafka, fromStage *config.PipelineBuilderStage) config.PipelineBuilderStage {
 	return fromStage.EncodeKafka(name, api.EncodeKafka{
 		Address: spec.Address,
 		Topic:   spec.Topic,
-		TLS:     getKafkaTLS(&spec.TLS),
+		TLS:     b.getKafkaTLS(&spec.TLS, name),
 	})
 }
 
-func getKafkaTLS(tls *flowslatest.ClientTLS) *api.ClientTLS {
+func (b *builder) getKafkaTLS(tls *flowslatest.ClientTLS, volumeName string) *api.ClientTLS {
 	if tls.Enable {
+		caPath, userCertPath, userKeyPath := b.volumes.AddMutualTLSCertificates(tls, volumeName)
 		return &api.ClientTLS{
 			InsecureSkipVerify: tls.InsecureSkipVerify,
-			CACertPath:         helper.GetCACertPath(tls, kafkaCerts),
-			UserCertPath:       helper.GetUserCertPath(tls, kafkaCerts),
-			UserKeyPath:        helper.GetUserKeyPath(tls, kafkaCerts),
+			CACertPath:         caPath,
+			UserCertPath:       userCertPath,
+			UserKeyPath:        userKeyPath,
 		}
 	}
 	return nil
+}
+
+func (b *builder) getKafkaSASL(sasl *flowslatest.SASLConfig) *api.SASLConfig {
+	var t string
+	switch sasl.Type {
+	case flowslatest.SASLPlain:
+		t = "plain"
+	case flowslatest.SASLScramSHA512:
+		t = "scramSHA512"
+	case flowslatest.SASLDisabled:
+	default:
+		return nil
+	}
+	path := b.volumes.AddVolume(&sasl.Secret, "sasl")
+	return &api.SASLConfig{
+		Type:       t,
+		Username:   sasl.Username,
+		SecretPath: path,
+	}
 }
 
 // returns a configmap with a digest of its configuration contents, which will be used to
@@ -570,9 +573,10 @@ func (b *builder) configMap(stages []config.Stage, parameters []config.StagePara
 		NoPanic: true,
 	}
 	if b.desired.Processor.Metrics.Server.TLS.Type != flowslatest.ServerTLSDisabled {
+		cert, key := b.volumes.AddCertificate(b.promTLS, "prom-certs")
 		metricsSettings.TLS = &api.PromTLSConf{
-			CertPath: helper.GetSingleCertPath(b.promTLS, promCerts),
-			KeyPath:  helper.GetSingleKeyPath(b.promTLS, promCerts),
+			CertPath: cert,
+			KeyPath:  key,
 		}
 	}
 	config := map[string]interface{}{

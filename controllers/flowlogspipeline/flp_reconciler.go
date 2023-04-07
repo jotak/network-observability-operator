@@ -13,6 +13,7 @@ import (
 	flowslatest "github.com/netobserv/network-observability-operator/api/v1beta1"
 	"github.com/netobserv/network-observability-operator/controllers/reconcilers"
 	"github.com/netobserv/network-observability-operator/pkg/discover"
+	"github.com/netobserv/network-observability-operator/pkg/helper"
 )
 
 // Type alias
@@ -32,14 +33,14 @@ type singleReconciler interface {
 }
 
 type reconcilersCommonInfo struct {
-	reconcilers.ClientHelper
+	helper.ClientHelper
 	nobjMngr        *reconcilers.NamespacedObjectManager
 	useOpenShiftSCC bool
 	image           string
 	availableAPIs   *discover.AvailableAPIs
 }
 
-func createCommonInfo(ctx context.Context, cl reconcilers.ClientHelper, ns, prevNS, image string, permissionsVendor *discover.Permissions, availableAPIs *discover.AvailableAPIs) *reconcilersCommonInfo {
+func createCommonInfo(ctx context.Context, cl helper.ClientHelper, ns, prevNS, image string, permissionsVendor *discover.Permissions, availableAPIs *discover.AvailableAPIs) *reconcilersCommonInfo {
 	nobjMngr := reconcilers.NewNamespacedObjectManager(cl, ns, prevNS)
 	openshift := permissionsVendor.Vendor(ctx) == discover.VendorOpenShift
 	return &reconcilersCommonInfo{
@@ -51,7 +52,7 @@ func createCommonInfo(ctx context.Context, cl reconcilers.ClientHelper, ns, prev
 	}
 }
 
-func NewReconciler(ctx context.Context, cl reconcilers.ClientHelper, ns, prevNS, image string, permissionsVendor *discover.Permissions, availableAPIs *discover.AvailableAPIs) FLPReconciler {
+func NewReconciler(ctx context.Context, cl helper.ClientHelper, ns, prevNS, image string, permissionsVendor *discover.Permissions, availableAPIs *discover.AvailableAPIs) FLPReconciler {
 	return FLPReconciler{
 		reconcilers: []singleReconciler{
 			newMonolithReconciler(createCommonInfo(ctx, cl, ns, prevNS, image, permissionsVendor, availableAPIs)),

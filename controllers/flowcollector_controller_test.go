@@ -607,7 +607,7 @@ func flowCollectorControllerSpecs() {
 				fc.Spec.Loki.TLS = flowslatest.ClientTLS{
 					Enable: true,
 					CACert: flowslatest.CertificateReference{
-						Type:     flowslatest.CertRefTypeConfigMap,
+						Type:     flowslatest.RefTypeConfigMap,
 						Name:     "loki-ca",
 						CertFile: "ca.crt",
 					},

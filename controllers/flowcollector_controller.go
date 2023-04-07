@@ -29,7 +29,6 @@ import (
 	"github.com/netobserv/network-observability-operator/controllers/ebpf"
 	"github.com/netobserv/network-observability-operator/controllers/flowlogspipeline"
 	"github.com/netobserv/network-observability-operator/controllers/ovs"
-	"github.com/netobserv/network-observability-operator/controllers/reconcilers"
 	"github.com/netobserv/network-observability-operator/pkg/conditions"
 	"github.com/netobserv/network-observability-operator/pkg/discover"
 	"github.com/netobserv/network-observability-operator/pkg/helper"
@@ -48,7 +47,7 @@ type FlowCollectorReconciler struct {
 	availableAPIs *discover.AvailableAPIs
 	Scheme        *runtime.Scheme
 	config        *operator.Config
-	certWatcher   *watchers.CertificatesWatcher
+	watcher       *watchers.Watcher
 	lookupIP      func(string) ([]net.IP, error)
 }
 
@@ -97,7 +96,7 @@ func (r *FlowCollectorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	ns := getNamespaceName(desired)
-	r.certWatcher.Reset(ns)
+	r.watcher.Reset(ns)
 
 	clientHelper := r.newClientHelper(desired)
 	previousNamespace := desired.Status.Namespace
@@ -147,7 +146,7 @@ func (r *FlowCollectorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	// eBPF agent
-	ebpfAgentController := ebpf.NewAgentController(clientHelper, ns, previousNamespace, &r.permissions, r.config)
+	ebpfAgentController := ebpf.NewAgentController(clientHelper, ns, previousNamespace, &r.permissions, r.config, r.watcher)
 	if err := ebpfAgentController.Reconcile(ctx, desired); err != nil {
 		return ctrl.Result{}, r.failure(ctx, conditions.ReconcileAgentFailed(err), desired)
 	}
@@ -234,7 +233,7 @@ func (r *FlowCollectorReconciler) SetupWithManager(ctx context.Context, mgr ctrl
 		return err
 	}
 
-	r.certWatcher = watchers.RegisterCertificatesWatcher(builder)
+	r.watcher = watchers.RegisterWatcher(builder)
 
 	return builder.Complete(r)
 }
@@ -287,7 +286,7 @@ func (r *FlowCollectorReconciler) namespaceExist(ctx context.Context, nsName str
 	return ns, nil
 }
 
-func (r *FlowCollectorReconciler) reconcileOperator(ctx context.Context, clientHelper reconcilers.ClientHelper, ns string, desired *flowslatest.FlowCollector) error {
+func (r *FlowCollectorReconciler) reconcileOperator(ctx context.Context, clientHelper helper.ClientHelper, ns string, desired *flowslatest.FlowCollector) error {
 	// If namespace does not exist, we create it
 	nsExist, err := r.namespaceExist(ctx, ns)
 	if err != nil {
@@ -366,8 +365,8 @@ func (r *FlowCollectorReconciler) finalize(ctx context.Context, desired *flowsla
 	return nil
 }
 
-func (r *FlowCollectorReconciler) newClientHelper(desired *flowslatest.FlowCollector) reconcilers.ClientHelper {
-	return reconcilers.ClientHelper{
+func (r *FlowCollectorReconciler) newClientHelper(desired *flowslatest.FlowCollector) helper.ClientHelper {
+	return helper.ClientHelper{
 		Client: r.Client,
 		SetControllerReference: func(obj client.Object) error {
 			return ctrl.SetControllerReference(desired, obj, r.Scheme)

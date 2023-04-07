@@ -126,7 +126,7 @@ func (m *NamespacedObjectManager) Exists(obj client.Object) bool {
 	return false
 }
 
-func GenericReconcile[K client.Object](ctx context.Context, m *NamespacedObjectManager, cl *ClientHelper, old, new K, report *helper.ChangeReport, changeFunc func(old, new K, report *helper.ChangeReport) bool) error {
+func GenericReconcile[K client.Object](ctx context.Context, m *NamespacedObjectManager, cl *helper.ClientHelper, old, new K, report *helper.ChangeReport, changeFunc func(old, new K, report *helper.ChangeReport) bool) error {
 	if !m.Exists(old) {
 		return cl.CreateOwned(ctx, new)
 	}
