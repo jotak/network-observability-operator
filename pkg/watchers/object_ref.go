@@ -11,7 +11,7 @@ type objectRef struct {
 	keys      []string
 }
 
-func (w *Watcher) refFromConfigOrSecret(cos *flowslatest.ConfigOrSecret) objectRef {
+func (w *Watcher) refFromConfigOrSecret(cos *flowslatest.ConfigOrSecret, keys []string) objectRef {
 	ns := cos.Namespace
 	if ns == "" {
 		ns = w.defaultNamespace
@@ -20,7 +20,7 @@ func (w *Watcher) refFromConfigOrSecret(cos *flowslatest.ConfigOrSecret) objectR
 		kind:      cos.Type,
 		name:      cos.Name,
 		namespace: ns,
-		keys:      []string{cos.Filename},
+		keys:      keys,
 	}
 }
 

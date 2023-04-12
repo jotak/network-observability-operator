@@ -28,11 +28,11 @@ type managedObject struct {
 	found       bool
 }
 
-func NewNamespacedObjectManager(cl client.Client, ns, prevNS string) *NamespacedObjectManager {
+func NewNamespacedObjectManager(cmn *Common) *NamespacedObjectManager {
 	return &NamespacedObjectManager{
-		client:            cl,
-		Namespace:         ns,
-		PreviousNamespace: prevNS,
+		client:            cmn.Client,
+		Namespace:         cmn.Namespace,
+		PreviousNamespace: cmn.PreviousNamespace,
 	}
 }
 

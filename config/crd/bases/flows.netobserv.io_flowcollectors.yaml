@@ -993,14 +993,17 @@ spec:
                             when eBPF agents are used, the SASL secret needs to be
                             copied in the agent namespace (by default it's netobserv-privileged).
                           properties:
-                            secret:
-                              description: reference to the secret containing the
-                                SASL password
+                            clientIDKey:
+                              description: key for ClientID within the provided secretRef
+                              type: string
+                            clientSecretKey:
+                              description: key for ClientSecret within the provided
+                                secretRef
+                              type: string
+                            secretRef:
+                              description: reference to the secret (or config map)
+                                containing the client ID and secret
                               properties:
-                                key:
-                                  description: file name reference within secret or
-                                    config map
-                                  type: string
                                 name:
                                   description: name of the config map or secret to
                                     reference
@@ -1029,9 +1032,6 @@ spec:
                               - DISABLED
                               - PLAIN
                               - SCRAM-SHA512
-                              type: string
-                            username:
-                              description: username to provide for SASL authentication
                               type: string
                           type: object
                         tls:
@@ -1154,13 +1154,16 @@ spec:
                       eBPF agents are used, the SASL secret needs to be copied in
                       the agent namespace (by default it's netobserv-privileged).
                     properties:
-                      secret:
-                        description: reference to the secret containing the SASL password
+                      clientIDKey:
+                        description: key for ClientID within the provided secretRef
+                        type: string
+                      clientSecretKey:
+                        description: key for ClientSecret within the provided secretRef
+                        type: string
+                      secretRef:
+                        description: reference to the secret (or config map) containing
+                          the client ID and secret
                         properties:
-                          key:
-                            description: file name reference within secret or config
-                              map
-                            type: string
                           name:
                             description: name of the config map or secret to reference
                             type: string
@@ -1186,9 +1189,6 @@ spec:
                         - DISABLED
                         - PLAIN
                         - SCRAM-SHA512
-                        type: string
-                      username:
-                        description: username to provide for SASL authentication
                         type: string
                     type: object
                   tls:
@@ -3267,14 +3267,17 @@ spec:
                             when eBPF agents are used, the SASL secret needs to be
                             copied in the agent namespace (by default it's netobserv-privileged).
                           properties:
-                            secret:
-                              description: reference to the secret containing the
-                                SASL password
+                            clientIDKey:
+                              description: key for ClientID within the provided secretRef
+                              type: string
+                            clientSecretKey:
+                              description: key for ClientSecret within the provided
+                                secretRef
+                              type: string
+                            secretRef:
+                              description: reference to the secret (or config map)
+                                containing the client ID and secret
                               properties:
-                                key:
-                                  description: file name reference within secret or
-                                    config map
-                                  type: string
                                 name:
                                   description: name of the config map or secret to
                                     reference
@@ -3303,9 +3306,6 @@ spec:
                               - DISABLED
                               - PLAIN
                               - SCRAM-SHA512
-                              type: string
-                            username:
-                              description: username to provide for SASL authentication
                               type: string
                           type: object
                         tls:
@@ -3428,13 +3428,16 @@ spec:
                       eBPF agents are used, the SASL secret needs to be copied in
                       the agent namespace (by default it's netobserv-privileged).
                     properties:
-                      secret:
-                        description: reference to the secret containing the SASL password
+                      clientIDKey:
+                        description: key for ClientID within the provided secretRef
+                        type: string
+                      clientSecretKey:
+                        description: key for ClientSecret within the provided secretRef
+                        type: string
+                      secretRef:
+                        description: reference to the secret (or config map) containing
+                          the client ID and secret
                         properties:
-                          key:
-                            description: file name reference within secret or config
-                              map
-                            type: string
                           name:
                             description: name of the config map or secret to reference
                             type: string
@@ -3460,9 +3463,6 @@ spec:
                         - DISABLED
                         - PLAIN
                         - SCRAM-SHA512
-                        type: string
-                      username:
-                        description: username to provide for SASL authentication
                         type: string
                     type: object
                   tls:

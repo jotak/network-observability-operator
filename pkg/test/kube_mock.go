@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/stretchr/testify/mock"
+	v1 "k8s.io/api/core/v1"
 	kerr "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -46,16 +47,34 @@ func (o *ClientMock) Update(ctx context.Context, obj client.Object, opts ...clie
 	return args.Error(0)
 }
 
-func (o *ClientMock) MockExisting(obj client.Object) {
+func (o *ClientMock) MockSecret(obj *v1.Secret) {
 	if o.objs == nil {
 		o.objs = map[string]client.Object{}
 	}
 	o.objs[key(obj)] = obj
 	o.On("Get", mock.Anything, types.NamespacedName{Namespace: obj.GetNamespace(), Name: obj.GetName()}, mock.Anything).Run(func(args mock.Arguments) {
-		arg := args.Get(2).(client.Object)
+		arg := args.Get(2).(*v1.Secret)
 		arg.SetName(obj.GetName())
 		arg.SetNamespace(obj.GetNamespace())
+		arg.Data = obj.Data
 	}).Return(nil)
+}
+
+func (o *ClientMock) MockConfigMap(obj *v1.ConfigMap) {
+	if o.objs == nil {
+		o.objs = map[string]client.Object{}
+	}
+	o.objs[key(obj)] = obj
+	o.On("Get", mock.Anything, types.NamespacedName{Namespace: obj.GetNamespace(), Name: obj.GetName()}, mock.Anything).Run(func(args mock.Arguments) {
+		arg := args.Get(2).(*v1.ConfigMap)
+		arg.SetName(obj.GetName())
+		arg.SetNamespace(obj.GetNamespace())
+		arg.Data = obj.Data
+	}).Return(nil)
+}
+
+func (o *ClientMock) UpdateObject(obj client.Object) {
+	o.objs[key(obj)] = obj
 }
 
 func (o *ClientMock) MockNonExisting(nsn types.NamespacedName) {

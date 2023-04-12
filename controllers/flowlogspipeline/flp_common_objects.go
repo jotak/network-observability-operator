@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
+	"path"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -22,6 +23,7 @@ import (
 
 	flowslatest "github.com/netobserv/network-observability-operator/api/v1beta1"
 	"github.com/netobserv/network-observability-operator/controllers/constants"
+	"github.com/netobserv/network-observability-operator/controllers/reconcilers"
 	"github.com/netobserv/network-observability-operator/pkg/filters"
 	"github.com/netobserv/network-observability-operator/pkg/helper"
 	"github.com/netobserv/network-observability-operator/pkg/volumes"
@@ -69,19 +71,17 @@ var FlpConfSuffix = map[ConfKind]string{
 }
 
 type builder struct {
-	namespace       string
-	labels          map[string]string
-	selector        map[string]string
-	desired         *flowslatest.FlowCollectorSpec
-	promTLS         *flowslatest.CertificateReference
-	confKind        ConfKind
-	useOpenShiftSCC bool
-	image           string
-	volumes         volumes.Builder
+	info     *reconcilers.Instance
+	labels   map[string]string
+	selector map[string]string
+	desired  *flowslatest.FlowCollectorSpec
+	promTLS  *flowslatest.CertificateReference
+	confKind ConfKind
+	volumes  volumes.Builder
 }
 
-func newBuilder(ns, image string, desired *flowslatest.FlowCollectorSpec, ck ConfKind, useOpenShiftSCC bool) builder {
-	version := helper.ExtractVersion(image)
+func newBuilder(info *reconcilers.Instance, desired *flowslatest.FlowCollectorSpec, ck ConfKind) builder {
+	version := helper.ExtractVersion(info.Image)
 	name := name(ck)
 	var promTLS flowslatest.CertificateReference
 	switch desired.Processor.Metrics.Server.TLS.Type {
@@ -96,7 +96,7 @@ func newBuilder(ns, image string, desired *flowslatest.FlowCollectorSpec, ck Con
 		}
 	}
 	return builder{
-		namespace: ns,
+		info: info,
 		labels: map[string]string{
 			"app":     name,
 			"version": helper.MaxLabelLength(version),
@@ -104,11 +104,9 @@ func newBuilder(ns, image string, desired *flowslatest.FlowCollectorSpec, ck Con
 		selector: map[string]string{
 			"app": name,
 		},
-		desired:         desired,
-		confKind:        ck,
-		useOpenShiftSCC: useOpenShiftSCC,
-		promTLS:         &promTLS,
-		image:           image,
+		desired:  desired,
+		confKind: ck,
+		promTLS:  &promTLS,
 	}
 }
 
@@ -132,7 +130,7 @@ func (b *builder) portProtocol() corev1.Protocol {
 	return corev1.ProtocolUDP
 }
 
-func (b *builder) podTemplate(hasHostPort, hasLokiInterface, hostNetwork bool, configDigest string) corev1.PodTemplateSpec {
+func (b *builder) podTemplate(hasHostPort, hasLokiInterface, hostNetwork bool, annotations map[string]string) corev1.PodTemplateSpec {
 	var ports []corev1.ContainerPort
 	var tolerations []corev1.Toleration
 	if hasHostPort {
@@ -189,7 +187,7 @@ func (b *builder) podTemplate(hasHostPort, hasLokiInterface, hostNetwork bool, c
 
 	container := corev1.Container{
 		Name:            constants.FLPName,
-		Image:           b.image,
+		Image:           b.info.Image,
 		ImagePullPolicy: corev1.PullPolicy(b.desired.Processor.ImagePullPolicy),
 		Args:            []string{fmt.Sprintf(`--config=%s/%s`, configPath, configFile)},
 		Resources:       *b.desired.Processor.Resources.DeepCopy(),
@@ -224,15 +222,13 @@ func (b *builder) podTemplate(hasHostPort, hasLokiInterface, hostNetwork bool, c
 	if hostNetwork {
 		dnsPolicy = corev1.DNSClusterFirstWithHostNet
 	}
+	annotations["prometheus.io/scrape"] = "true"
+	annotations["prometheus.io/scrape_port"] = fmt.Sprint(b.desired.Processor.Metrics.Server.Port)
 
 	return corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
-			Labels: b.labels,
-			Annotations: map[string]string{
-				constants.PodConfigurationDigest: configDigest,
-				"prometheus.io/scrape":           "true",
-				"prometheus.io/scrape_port":      fmt.Sprint(b.desired.Processor.Metrics.Server.Port),
-			},
+			Labels:      b.labels,
+			Annotations: annotations,
 		},
 		Spec: corev1.PodSpec{
 			Tolerations:        tolerations,
@@ -445,6 +441,7 @@ func (b *builder) addTransformStages(stage *config.PipelineBuilderStage) (*corev
 
 	var authorization *promConfig.Authorization
 	if helper.LokiUseHostToken(&b.desired.Loki) || helper.LokiForwardUserToken(&b.desired.Loki) {
+		b.volumes.AddToken(constants.FLPName)
 		authorization = &promConfig.Authorization{
 			Type:            "Bearer",
 			CredentialsFile: constants.TokensPath + constants.FLPName,
@@ -516,6 +513,7 @@ func (b *builder) makeMetricsDashboardConfigMap(dashboard string) *corev1.Config
 	}
 	return &configMap
 }
+
 func (b *builder) addCustomExportStages(enrichedStage *config.PipelineBuilderStage) {
 	for i, exporter := range b.desired.Exporters {
 		if exporter.Type == flowslatest.KafkaExporter {
@@ -529,6 +527,7 @@ func (b *builder) createKafkaWriteStage(name string, spec *flowslatest.FlowColle
 		Address: spec.Address,
 		Topic:   spec.Topic,
 		TLS:     b.getKafkaTLS(&spec.TLS, name),
+		SASL:    b.getKafkaSASL(&spec.SASL, name),
 	})
 }
 
@@ -545,22 +544,19 @@ func (b *builder) getKafkaTLS(tls *flowslatest.ClientTLS, volumeName string) *ap
 	return nil
 }
 
-func (b *builder) getKafkaSASL(sasl *flowslatest.SASLConfig) *api.SASLConfig {
-	var t string
-	switch sasl.Type {
-	case flowslatest.SASLPlain:
-		t = "plain"
-	case flowslatest.SASLScramSHA512:
-		t = "scramSHA512"
-	case flowslatest.SASLDisabled:
-	default:
+func (b *builder) getKafkaSASL(sasl *flowslatest.SASLConfig, volumePrefix string) *api.SASLConfig {
+	if !helper.UseSASL(sasl) {
 		return nil
 	}
-	path := b.volumes.AddVolume(&sasl.Secret, "sasl")
+	t := "plain"
+	if sasl.Type == flowslatest.SASLScramSHA512 {
+		t = "scramSHA512"
+	}
+	basePath := b.volumes.AddVolume(&sasl.SecretRef, volumePrefix+"-sasl")
 	return &api.SASLConfig{
-		Type:       t,
-		Username:   sasl.Username,
-		SecretPath: path,
+		Type:             t,
+		ClientIDPath:     path.Join(basePath, sasl.ClientIDKey),
+		ClientSecretPath: path.Join(basePath, sasl.ClientSecretKey),
 	}
 }
 
@@ -603,7 +599,7 @@ func (b *builder) configMap(stages []config.Stage, parameters []config.StagePara
 	configMap := corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      b.configMapName(),
-			Namespace: b.namespace,
+			Namespace: b.info.Namespace,
 			Labels:    b.labels,
 		},
 		Data: map[string]string{
@@ -620,7 +616,7 @@ func (b *builder) newPromService() *corev1.Service {
 	service := corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      b.promServiceName(),
-			Namespace: b.namespace,
+			Namespace: b.info.Namespace,
 			Labels:    b.labels,
 		},
 		Spec: corev1.ServiceSpec{Selector: b.selector},
@@ -659,7 +655,7 @@ func (b *builder) serviceAccount() *corev1.ServiceAccount {
 	return &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      b.name(),
-			Namespace: b.namespace,
+			Namespace: b.info.Namespace,
 			Labels: map[string]string{
 				"app": b.name(),
 			},
@@ -689,7 +685,7 @@ func (b *builder) clusterRoleBinding(ck ConfKind, mono bool) *rbacv1.ClusterRole
 		Subjects: []rbacv1.Subject{{
 			Kind:      "ServiceAccount",
 			Name:      b.name(),
-			Namespace: b.namespace,
+			Namespace: b.info.Namespace,
 		}},
 	}
 }
@@ -698,7 +694,7 @@ func (b *builder) serviceMonitor() *monitoringv1.ServiceMonitor {
 	flpServiceMonitorObject := monitoringv1.ServiceMonitor{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      b.serviceMonitorName(),
-			Namespace: b.namespace,
+			Namespace: b.info.Namespace,
 			Labels:    b.labels,
 		},
 		Spec: monitoringv1.ServiceMonitorSpec{
@@ -711,7 +707,7 @@ func (b *builder) serviceMonitor() *monitoringv1.ServiceMonitor {
 			},
 			NamespaceSelector: monitoringv1.NamespaceSelector{
 				MatchNames: []string{
-					b.namespace,
+					b.info.Namespace,
 				},
 			},
 			Selector: metav1.LabelSelector{
@@ -772,7 +768,7 @@ func (b *builder) prometheusRule() *monitoringv1.PrometheusRule {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      b.prometheusRuleName(),
 			Labels:    b.labels,
-			Namespace: b.namespace,
+			Namespace: b.info.Namespace,
 		},
 		Spec: monitoringv1.PrometheusRuleSpec{
 			Groups: []monitoringv1.RuleGroup{

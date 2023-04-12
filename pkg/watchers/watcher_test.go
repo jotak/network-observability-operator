@@ -24,6 +24,9 @@ var lokiCA = corev1.ConfigMap{
 		Name:      "loki-ca",
 		Namespace: baseNamespace,
 	},
+	Data: map[string]string{
+		"tls.crt": " -- LOKI CA --",
+	},
 }
 var lokiTLS = flowslatest.ClientTLS{
 	Enable: true,
@@ -37,6 +40,9 @@ var otherLokiCA = corev1.ConfigMap{
 	ObjectMeta: v1.ObjectMeta{
 		Name:      "other-loki-ca",
 		Namespace: otherNamespace,
+	},
+	Data: map[string]string{
+		"tls.crt": " -- LOKI OTHER CA --",
 	},
 }
 var otherLokiTLS = flowslatest.ClientTLS{
@@ -53,17 +59,24 @@ var kafkaCA = corev1.ConfigMap{
 		Name:      "kafka-ca",
 		Namespace: baseNamespace,
 	},
+	Data: map[string]string{
+		"ca.crt": " -- KAFKA CA --",
+	},
 }
 var kafkaUser = corev1.Secret{
 	ObjectMeta: v1.ObjectMeta{
 		Name:      "kafka-user",
 		Namespace: baseNamespace,
 	},
+	Data: map[string][]byte{
+		"user.crt": []byte(" -- KAFKA USER CERT --"),
+		"user.key": []byte(" -- KAFKA USER KEY --"),
+	},
 }
 var kafkaMTLS = flowslatest.ClientTLS{
 	Enable: true,
 	CACert: flowslatest.CertificateReference{
-		Type:     flowslatest.RefTypeSecret,
+		Type:     flowslatest.RefTypeConfigMap,
 		Name:     kafkaCA.Name,
 		CertFile: "ca.crt",
 	},
@@ -80,22 +93,26 @@ var kafkaSaslSecret = corev1.Secret{
 		Namespace: baseNamespace,
 	},
 	Data: map[string][]byte{
+		"id":    []byte("me"),
 		"token": []byte("ssssaaaaassssslllll"),
 	},
 }
-var kafkaSaslConfig = flowslatest.ConfigOrSecret{
-	Type:     flowslatest.RefTypeSecret,
-	Name:     kafkaSaslSecret.Name,
-	Filename: "token",
+var kafkaSaslConfig = flowslatest.SASLConfig{
+	SecretRef: flowslatest.ConfigOrSecret{
+		Type: flowslatest.RefTypeSecret,
+		Name: kafkaSaslSecret.Name,
+	},
+	ClientIDKey:     "id",
+	ClientSecretKey: "token",
 }
 
 func TestGenDigests(t *testing.T) {
 	assert := assert.New(t)
 	clientMock := test.ClientMock{}
-	clientMock.MockExisting(&lokiCA)
-	clientMock.MockExisting(&kafkaCA)
-	clientMock.MockExisting(&kafkaUser)
-	clientMock.MockExisting(&kafkaSaslSecret)
+	clientMock.MockConfigMap(&lokiCA)
+	clientMock.MockConfigMap(&kafkaCA)
+	clientMock.MockSecret(&kafkaUser)
+	clientMock.MockSecret(&kafkaSaslSecret)
 
 	builder := builder.Builder{}
 	watcher := RegisterWatcher(&builder)
@@ -103,25 +120,50 @@ func TestGenDigests(t *testing.T) {
 	watcher.Reset(baseNamespace)
 	cl := helper.ClientHelper{Client: &clientMock}
 
+	digLoki, err := watcher.ProcessCACert(context.Background(), cl, &lokiTLS, baseNamespace)
+	assert.NoError(err)
+	assert.Equal("XDamCg==", digLoki)
+
+	// Same output expected from MTLS func
 	dig1, dig2, err := watcher.ProcessMTLSCerts(context.Background(), cl, &lokiTLS, baseNamespace)
 	assert.NoError(err)
-	assert.Equal("loki-ca", dig1)
+	assert.Equal("XDamCg==", dig1)
 	assert.Equal("", dig2)
 
+	// Different output for kafka certs
 	dig1, dig2, err = watcher.ProcessMTLSCerts(context.Background(), cl, &kafkaMTLS, baseNamespace)
 	assert.NoError(err)
-	assert.Equal("kafka-ca", dig1)
-	assert.Equal("kafka-user", dig2)
+	assert.Equal("EPFv4Q==", dig1)
+	assert.Equal("bNKS0Q==", dig2)
 
-	dig1, err = watcher.Process(context.Background(), cl, &kafkaSaslConfig, baseNamespace)
+	// Different output for sasl via watcher.Process
+	dig1, err = watcher.ProcessSASL(context.Background(), cl, &kafkaSaslConfig, baseNamespace)
 	assert.NoError(err)
-	assert.Equal("kafka-sasl", dig1)
+	assert.Equal("8aAMRw==", dig1)
+
+	// Update object, verify the digest has changed
+	copy := lokiCA
+	copy.Data["tls.crt"] = " -- LOKI CA MODIFIED --"
+	clientMock.UpdateObject(&copy)
+
+	digUpdated, err := watcher.ProcessCACert(context.Background(), cl, &lokiTLS, baseNamespace)
+	assert.NoError(err)
+	assert.NotEqual(digLoki, digUpdated)
+	assert.Equal("Hb65OQ==", digUpdated)
+
+	// Update another key in object, verify the digest hasn't changed
+	copy.Data["other"] = " -- OTHER --"
+	clientMock.UpdateObject(&copy)
+
+	digUpdated2, err := watcher.ProcessCACert(context.Background(), cl, &lokiTLS, baseNamespace)
+	assert.NoError(err)
+	assert.Equal(digUpdated2, digUpdated)
 }
 
 func TestNoCopy(t *testing.T) {
 	assert := assert.New(t)
 	clientMock := test.ClientMock{}
-	clientMock.MockExisting(&lokiCA)
+	clientMock.MockConfigMap(&lokiCA)
 
 	builder := builder.Builder{}
 	watcher := RegisterWatcher(&builder)
@@ -139,7 +181,7 @@ func TestNoCopy(t *testing.T) {
 func TestCopyCertificate(t *testing.T) {
 	assert := assert.New(t)
 	clientMock := test.ClientMock{}
-	clientMock.MockExisting(&otherLokiCA)
+	clientMock.MockConfigMap(&otherLokiCA)
 	clientMock.MockNonExisting(types.NamespacedName{Namespace: baseNamespace, Name: otherLokiCA.Name})
 	clientMock.MockCreateUpdate()
 
@@ -160,10 +202,10 @@ func TestCopyCertificate(t *testing.T) {
 func TestUpdateCertificate(t *testing.T) {
 	assert := assert.New(t)
 	clientMock := test.ClientMock{}
-	clientMock.MockExisting(&otherLokiCA)
+	clientMock.MockConfigMap(&otherLokiCA)
 	copied := otherLokiCA
 	copied.Namespace = baseNamespace
-	clientMock.MockExisting(&copied)
+	clientMock.MockConfigMap(&copied)
 	clientMock.MockCreateUpdate()
 
 	builder := builder.Builder{}

@@ -1,9 +1,9 @@
 package api
 
 type SASLConfig struct {
-	Type       string
-	Username   string `yaml:"username,omitempty" json:"username,omitempty" doc:"SASL username"`
-	SecretPath string `yaml:"secretPath,omitempty" json:"secretPath,omitempty" doc:"path to the user secret (password)"`
+	Type             string
+	ClientIDPath     string `yaml:"clientIDPath,omitempty" json:"clientIDPath,omitempty" doc:"path to the client ID / SASL username"`
+	ClientSecretPath string `yaml:"clientSecretPath,omitempty" json:"clientSecretPath,omitempty" doc:"path to the client secret / SASL password"`
 }
 
 type SASLTypeEnum struct {

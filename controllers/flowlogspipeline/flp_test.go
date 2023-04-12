@@ -32,6 +32,7 @@ import (
 
 	flowslatest "github.com/netobserv/network-observability-operator/api/v1beta1"
 	"github.com/netobserv/network-observability-operator/controllers/constants"
+	"github.com/netobserv/network-observability-operator/controllers/reconcilers"
 	"github.com/netobserv/network-observability-operator/pkg/helper"
 )
 
@@ -149,23 +150,39 @@ func getAutoScalerSpecs() (ascv2.HorizontalPodAutoscaler, flowslatest.FlowCollec
 	return autoScaler, getConfig().Processor.KafkaConsumerAutoscaler
 }
 
+func monoBuilder(ns string, cfg *flowslatest.FlowCollectorSpec) monolithBuilder {
+	info := reconcilers.Common{Namespace: ns}
+	return newMonolithBuilder(info.NewInstance(image), cfg)
+}
+
+func transfBuilder(ns string, cfg *flowslatest.FlowCollectorSpec) transfoBuilder {
+	info := reconcilers.Common{Namespace: ns}
+	return newTransfoBuilder(info.NewInstance(image), cfg)
+}
+
+func annotate(digest string) map[string]string {
+	return map[string]string{
+		constants.PodConfigurationDigest: digest,
+	}
+}
+
 func TestDaemonSetNoChange(t *testing.T) {
 	assert := assert.New(t)
 
 	// Get first
 	ns := "namespace"
 	cfg := getConfig()
-	b := newMonolithBuilder(ns, image, &cfg, true)
+	b := monoBuilder(ns, &cfg)
 	_, digest, _, err := b.configMap()
 	assert.NoError(err)
-	first := b.daemonSet(digest)
+	first := b.daemonSet(annotate(digest))
 
 	// Check no change
 	cfg = getConfig()
-	b = newMonolithBuilder(ns, image, &cfg, true)
+	b = monoBuilder(ns, &cfg)
 	_, digest, _, err = b.configMap()
 	assert.NoError(err)
-	second := b.daemonSet(digest)
+	second := b.daemonSet(annotate(digest))
 
 	report := helper.NewChangeReport("")
 	assert.False(helper.PodChanged(&first.Spec.Template, &second.Spec.Template, constants.FLPName, &report))
@@ -178,17 +195,17 @@ func TestDaemonSetChanged(t *testing.T) {
 	// Get first
 	ns := "namespace"
 	cfg := getConfig()
-	b := newMonolithBuilder(ns, image, &cfg, true)
+	b := monoBuilder(ns, &cfg)
 	_, digest, _, err := b.configMap()
 	assert.NoError(err)
-	first := b.daemonSet(digest)
+	first := b.daemonSet(annotate(digest))
 
 	// Check probes enabled change
 	cfg.Processor.EnableKubeProbes = true
-	b = newMonolithBuilder(ns, image, &cfg, true)
+	b = monoBuilder(ns, &cfg)
 	_, digest, _, err = b.configMap()
 	assert.NoError(err)
-	second := b.daemonSet(digest)
+	second := b.daemonSet(annotate(digest))
 
 	report := helper.NewChangeReport("")
 	assert.True(helper.PodChanged(&first.Spec.Template, &second.Spec.Template, constants.FLPName, &report))
@@ -196,7 +213,7 @@ func TestDaemonSetChanged(t *testing.T) {
 
 	// Check probes DON'T change infinitely (bc DeepEqual/Derivative checks won't work there)
 	assert.NoError(err)
-	secondBis := b.daemonSet(digest)
+	secondBis := b.daemonSet(annotate(digest))
 	secondBis.Spec.Template.Spec.Containers[0].LivenessProbe = &corev1.Probe{
 		FailureThreshold: 3,
 		PeriodSeconds:    10,
@@ -216,10 +233,10 @@ func TestDaemonSetChanged(t *testing.T) {
 
 	// Check log level change
 	cfg.Processor.LogLevel = "info"
-	b = newMonolithBuilder(ns, image, &cfg, true)
+	b = monoBuilder(ns, &cfg)
 	_, digest, _, err = b.configMap()
 	assert.NoError(err)
-	third := b.daemonSet(digest)
+	third := b.daemonSet(annotate(digest))
 
 	report = helper.NewChangeReport("")
 	assert.True(helper.PodChanged(&second.Spec.Template, &third.Spec.Template, constants.FLPName, &report))
@@ -230,10 +247,10 @@ func TestDaemonSetChanged(t *testing.T) {
 		corev1.ResourceCPU:    resource.MustParse("500m"),
 		corev1.ResourceMemory: resource.MustParse("500Gi"),
 	}
-	b = newMonolithBuilder(ns, image, &cfg, true)
+	b = monoBuilder(ns, &cfg)
 	_, digest, _, err = b.configMap()
 	assert.NoError(err)
-	fourth := b.daemonSet(digest)
+	fourth := b.daemonSet(annotate(digest))
 
 	report = helper.NewChangeReport("")
 	assert.True(helper.PodChanged(&third.Spec.Template, &fourth.Spec.Template, constants.FLPName, &report))
@@ -244,10 +261,10 @@ func TestDaemonSetChanged(t *testing.T) {
 		corev1.ResourceCPU:    resource.MustParse("1"),
 		corev1.ResourceMemory: resource.MustParse("512Mi"),
 	}
-	b = newMonolithBuilder(ns, image, &cfg, true)
+	b = monoBuilder(ns, &cfg)
 	_, digest, _, err = b.configMap()
 	assert.NoError(err)
-	fifth := b.daemonSet(digest)
+	fifth := b.daemonSet(annotate(digest))
 
 	report = helper.NewChangeReport("")
 	assert.True(helper.PodChanged(&fourth.Spec.Template, &fifth.Spec.Template, constants.FLPName, &report))
@@ -265,10 +282,10 @@ func TestDaemonSetChanged(t *testing.T) {
 			CertFile: "ca.crt",
 		},
 	}
-	b = newMonolithBuilder(ns, image, &cfg, true)
+	b = monoBuilder(ns, &cfg)
 	_, digest, _, err = b.configMap()
 	assert.NoError(err)
-	sixth := b.daemonSet(digest)
+	sixth := b.daemonSet(annotate(digest))
 
 	report = helper.NewChangeReport("")
 	assert.True(helper.PodChanged(&fifth.Spec.Template, &sixth.Spec.Template, constants.FLPName, &report))
@@ -283,10 +300,10 @@ func TestDaemonSetChanged(t *testing.T) {
 			CertFile: "ca.crt",
 		},
 	}
-	b = newMonolithBuilder(ns, image, &cfg, true)
+	b = monoBuilder(ns, &cfg)
 	_, digest, _, err = b.configMap()
 	assert.NoError(err)
-	seventh := b.daemonSet(digest)
+	seventh := b.daemonSet(annotate(digest))
 
 	report = helper.NewChangeReport("")
 	assert.True(helper.PodChanged(&sixth.Spec.Template, &seventh.Spec.Template, constants.FLPName, &report))
@@ -299,17 +316,17 @@ func TestDeploymentNoChange(t *testing.T) {
 	// Get first
 	ns := "namespace"
 	cfg := getConfig()
-	b := newTransfoBuilder(ns, image, &cfg, true)
+	b := transfBuilder(ns, &cfg)
 	_, digest, _, err := b.configMap()
 	assert.NoError(err)
-	first := b.deployment(digest)
+	first := b.deployment(annotate(digest))
 
 	// Check no change
 	cfg = getConfig()
-	b = newTransfoBuilder(ns, image, &cfg, true)
+	b = transfBuilder(ns, &cfg)
 	_, digest, _, err = b.configMap()
 	assert.NoError(err)
-	second := b.deployment(digest)
+	second := b.deployment(annotate(digest))
 
 	report := helper.NewChangeReport("")
 	assert.False(helper.DeploymentChanged(first, second, constants.FLPName, helper.HPADisabled(&cfg.Processor.KafkaConsumerAutoscaler), cfg.Processor.KafkaConsumerReplicas, &report))
@@ -322,17 +339,17 @@ func TestDeploymentChanged(t *testing.T) {
 	// Get first
 	ns := "namespace"
 	cfg := getConfig()
-	b := newTransfoBuilder(ns, image, &cfg, true)
+	b := transfBuilder(ns, &cfg)
 	_, digest, _, err := b.configMap()
 	assert.NoError(err)
-	first := b.deployment(digest)
+	first := b.deployment(annotate(digest))
 
 	// Check probes enabled change
 	cfg.Processor.EnableKubeProbes = true
-	b = newTransfoBuilder(ns, image, &cfg, true)
+	b = transfBuilder(ns, &cfg)
 	_, digest, _, err = b.configMap()
 	assert.NoError(err)
-	second := b.deployment(digest)
+	second := b.deployment(annotate(digest))
 
 	report := helper.NewChangeReport("")
 	checkChanged := func(old, new *appsv1.Deployment, spec flowslatest.FlowCollectorSpec) bool {
@@ -344,10 +361,10 @@ func TestDeploymentChanged(t *testing.T) {
 
 	// Check log level change
 	cfg.Processor.LogLevel = "info"
-	b = newTransfoBuilder(ns, image, &cfg, true)
+	b = transfBuilder(ns, &cfg)
 	_, digest, _, err = b.configMap()
 	assert.NoError(err)
-	third := b.deployment(digest)
+	third := b.deployment(annotate(digest))
 
 	report = helper.NewChangeReport("")
 	assert.True(checkChanged(second, third, cfg))
@@ -358,10 +375,10 @@ func TestDeploymentChanged(t *testing.T) {
 		corev1.ResourceCPU:    resource.MustParse("500m"),
 		corev1.ResourceMemory: resource.MustParse("500Gi"),
 	}
-	b = newTransfoBuilder(ns, image, &cfg, true)
+	b = transfBuilder(ns, &cfg)
 	_, digest, _, err = b.configMap()
 	assert.NoError(err)
-	fourth := b.deployment(digest)
+	fourth := b.deployment(annotate(digest))
 
 	report = helper.NewChangeReport("")
 	assert.True(checkChanged(third, fourth, cfg))
@@ -372,10 +389,10 @@ func TestDeploymentChanged(t *testing.T) {
 		corev1.ResourceCPU:    resource.MustParse("1"),
 		corev1.ResourceMemory: resource.MustParse("512Mi"),
 	}
-	b = newTransfoBuilder(ns, image, &cfg, true)
+	b = transfBuilder(ns, &cfg)
 	_, digest, _, err = b.configMap()
 	assert.NoError(err)
-	fifth := b.deployment(digest)
+	fifth := b.deployment(annotate(digest))
 
 	report = helper.NewChangeReport("")
 	assert.True(checkChanged(fourth, fifth, cfg))
@@ -387,10 +404,10 @@ func TestDeploymentChanged(t *testing.T) {
 	// Check replicas didn't change because HPA is used
 	cfg2 := cfg
 	cfg2.Processor.KafkaConsumerReplicas = 5
-	b = newTransfoBuilder(ns, image, &cfg2, true)
+	b = transfBuilder(ns, &cfg2)
 	_, digest, _, err = b.configMap()
 	assert.NoError(err)
-	sixth := b.deployment(digest)
+	sixth := b.deployment(annotate(digest))
 
 	report = helper.NewChangeReport("")
 	assert.False(checkChanged(fifth, sixth, cfg2))
@@ -403,18 +420,18 @@ func TestDeploymentChangedReplicasNoHPA(t *testing.T) {
 	// Get first
 	ns := "namespace"
 	cfg := getConfigNoHPA()
-	b := newTransfoBuilder(ns, image, &cfg, true)
+	b := transfBuilder(ns, &cfg)
 	_, digest, _, err := b.configMap()
 	assert.NoError(err)
-	first := b.deployment(digest)
+	first := b.deployment(annotate(digest))
 
 	// Check replicas changed (need to copy flp, as Spec.Replicas stores a pointer)
 	cfg2 := cfg
 	cfg2.Processor.KafkaConsumerReplicas = 5
-	b = newTransfoBuilder(ns, image, &cfg2, true)
+	b = transfBuilder(ns, &cfg2)
 	_, digest, _, err = b.configMap()
 	assert.NoError(err)
-	second := b.deployment(digest)
+	second := b.deployment(annotate(digest))
 
 	report := helper.NewChangeReport("")
 	assert.True(helper.DeploymentChanged(first, second, constants.FLPName, helper.HPADisabled(&cfg2.Processor.KafkaConsumerAutoscaler), cfg2.Processor.KafkaConsumerReplicas, &report))
@@ -427,7 +444,7 @@ func TestServiceNoChange(t *testing.T) {
 	// Get first
 	ns := "namespace"
 	cfg := getConfig()
-	b := newMonolithBuilder(ns, image, &cfg, true)
+	b := monoBuilder(ns, &cfg)
 	first := b.newPromService()
 
 	// Check no change
@@ -444,12 +461,12 @@ func TestServiceChanged(t *testing.T) {
 	// Get first
 	ns := "namespace"
 	cfg := getConfig()
-	b := newMonolithBuilder(ns, image, &cfg, true)
+	b := monoBuilder(ns, &cfg)
 	first := b.newPromService()
 
 	// Check port changed
 	cfg.Processor.Metrics.Server.Port = 9999
-	b = newMonolithBuilder(ns, image, &cfg, true)
+	b = monoBuilder(ns, &cfg)
 	second := b.fromPromService(first)
 
 	report := helper.NewChangeReport("")
@@ -458,7 +475,7 @@ func TestServiceChanged(t *testing.T) {
 
 	// Make sure non-service settings doesn't trigger service update
 	cfg.Processor.LogLevel = "error"
-	b = newMonolithBuilder(ns, image, &cfg, true)
+	b = monoBuilder(ns, &cfg)
 	third := b.fromPromService(first)
 
 	report = helper.NewChangeReport("")
@@ -472,7 +489,7 @@ func TestServiceMonitorNoChange(t *testing.T) {
 	// Get first
 	ns := "namespace"
 	cfg := getConfig()
-	b := newMonolithBuilder(ns, image, &cfg, true)
+	b := monoBuilder(ns, &cfg)
 	first := b.generic.serviceMonitor()
 
 	// Check no change
@@ -489,11 +506,11 @@ func TestServiceMonitorChanged(t *testing.T) {
 	// Get first
 	ns := "namespace"
 	cfg := getConfig()
-	b := newMonolithBuilder(ns, image, &cfg, true)
+	b := monoBuilder(ns, &cfg)
 	first := b.generic.serviceMonitor()
 
 	// Check namespace change
-	b = newMonolithBuilder("namespace2", image, &cfg, true)
+	b = monoBuilder("namespace2", &cfg)
 	second := b.generic.serviceMonitor()
 
 	report := helper.NewChangeReport("")
@@ -501,7 +518,8 @@ func TestServiceMonitorChanged(t *testing.T) {
 	assert.Contains(report.String(), "ServiceMonitor spec changed")
 
 	// Check labels change
-	b = newMonolithBuilder("namespace2", image2, &cfg, true)
+	info := reconcilers.Common{Namespace: "namespace2"}
+	b = newMonolithBuilder(info.NewInstance(image2), &cfg)
 	third := b.generic.serviceMonitor()
 
 	report = helper.NewChangeReport("")
@@ -515,7 +533,7 @@ func TestPrometheusRuleNoChange(t *testing.T) {
 	// Get first
 	ns := "namespace"
 	cfg := getConfig()
-	b := newMonolithBuilder(ns, image, &cfg, true)
+	b := monoBuilder(ns, &cfg)
 	first := b.generic.prometheusRule()
 
 	// Check no change
@@ -531,12 +549,12 @@ func TestPrometheusRuleChanged(t *testing.T) {
 
 	// Get first
 	cfg := getConfig()
-	b := newMonolithBuilder("namespace", image, &cfg, true)
+	b := monoBuilder("namespace", &cfg)
 	first := b.generic.prometheusRule()
 
 	// Check namespace change
 	cfg.Processor.Metrics.DisableAlerts = []flowslatest.FLPAlert{flowslatest.AlertNoFlows}
-	b = newMonolithBuilder("namespace", image, &cfg, true)
+	b = monoBuilder("namespace", &cfg)
 	second := b.generic.prometheusRule()
 
 	report := helper.NewChangeReport("")
@@ -544,7 +562,8 @@ func TestPrometheusRuleChanged(t *testing.T) {
 	assert.Contains(report.String(), "PrometheusRule spec changed")
 
 	// Check labels change
-	b = newMonolithBuilder("namespace2", image2, &cfg, true)
+	info := reconcilers.Common{Namespace: "namespace2"}
+	b = newMonolithBuilder(info.NewInstance(image2), &cfg)
 	third := b.generic.prometheusRule()
 
 	report = helper.NewChangeReport("")
@@ -558,7 +577,7 @@ func TestConfigMapShouldDeserializeAsJSON(t *testing.T) {
 	ns := "namespace"
 	cfg := getConfig()
 	loki := cfg.Loki
-	b := newMonolithBuilder(ns, image, &cfg, true)
+	b := monoBuilder(ns, &cfg)
 	cm, digest, _, err := b.configMap()
 	assert.NoError(err)
 	assert.NotEmpty(t, digest)
@@ -626,26 +645,27 @@ func TestLabels(t *testing.T) {
 	assert := assert.New(t)
 
 	cfg := getConfig()
-	builder := newMonolithBuilder("ns", image, &cfg, true)
-	tBuilder := newTransfoBuilder("ns", image, &cfg, true)
-	iBuilder := newIngestBuilder("ns", image, &cfg, true)
+	info := reconcilers.Common{Namespace: "ns"}
+	builder := newMonolithBuilder(info.NewInstance(image), &cfg)
+	tBuilder := newTransfoBuilder(info.NewInstance(image), &cfg)
+	iBuilder := newIngestBuilder(info.NewInstance(image), &cfg)
 
 	// Deployment
-	depl := tBuilder.deployment("digest")
+	depl := tBuilder.deployment(annotate("digest"))
 	assert.Equal("flowlogs-pipeline-transformer", depl.Labels["app"])
 	assert.Equal("flowlogs-pipeline-transformer", depl.Spec.Template.Labels["app"])
 	assert.Equal("dev", depl.Labels["version"])
 	assert.Equal("dev", depl.Spec.Template.Labels["version"])
 
 	// DaemonSet
-	ds := builder.daemonSet("digest")
+	ds := builder.daemonSet(annotate("digest"))
 	assert.Equal("flowlogs-pipeline", ds.Labels["app"])
 	assert.Equal("flowlogs-pipeline", ds.Spec.Template.Labels["app"])
 	assert.Equal("dev", ds.Labels["version"])
 	assert.Equal("dev", ds.Spec.Template.Labels["version"])
 
 	// DaemonSet (ingester)
-	ds2 := iBuilder.daemonSet("digest")
+	ds2 := iBuilder.daemonSet(annotate("digest"))
 	assert.Equal("flowlogs-pipeline-ingester", ds2.Labels["app"])
 	assert.Equal("flowlogs-pipeline-ingester", ds2.Spec.Template.Labels["app"])
 	assert.Equal("dev", ds2.Labels["version"])
@@ -697,7 +717,7 @@ func TestPipelineConfig(t *testing.T) {
 	ns := "namespace"
 	cfg := getConfig()
 	cfg.Processor.LogLevel = "info"
-	b := newMonolithBuilder(ns, image, &cfg, true)
+	b := monoBuilder(ns, &cfg)
 	stages, parameters, _, err := b.buildPipelineConfig()
 	assert.NoError(err)
 	assert.True(validatePipelineConfig(stages, parameters))
@@ -706,7 +726,8 @@ func TestPipelineConfig(t *testing.T) {
 
 	// Kafka Ingester
 	cfg.DeploymentModel = flowslatest.DeploymentModelKafka
-	bi := newIngestBuilder(ns, image, &cfg, true)
+	info := reconcilers.Common{Namespace: ns}
+	bi := newIngestBuilder(info.NewInstance(image), &cfg)
 	stages, parameters, err = bi.buildPipelineConfig()
 	assert.NoError(err)
 	assert.True(validatePipelineConfig(stages, parameters))
@@ -714,7 +735,7 @@ func TestPipelineConfig(t *testing.T) {
 	assert.Equal(`[{"name":"ipfix"},{"name":"kafka-write","follows":"ipfix"}]`, string(jsonStages))
 
 	// Kafka Transformer
-	bt := newTransfoBuilder(ns, image, &cfg, true)
+	bt := transfBuilder(ns, &cfg)
 	stages, parameters, _, err = bt.buildPipelineConfig()
 	assert.NoError(err)
 	assert.True(validatePipelineConfig(stages, parameters))
@@ -730,7 +751,7 @@ func TestPipelineConfigDropUnused(t *testing.T) {
 	cfg := getConfig()
 	cfg.Processor.LogLevel = "info"
 	cfg.Processor.DropUnusedFields = true
-	b := newMonolithBuilder(ns, image, &cfg, true)
+	b := monoBuilder(ns, &cfg)
 	stages, parameters, _, err := b.buildPipelineConfig()
 	assert.NoError(err)
 	assert.True(validatePipelineConfig(stages, parameters))
@@ -748,7 +769,7 @@ func TestPipelineTraceStage(t *testing.T) {
 
 	cfg := getConfig()
 
-	b := newMonolithBuilder("namespace", image, &cfg, true)
+	b := monoBuilder("namespace", &cfg)
 	stages, parameters, _, err := b.buildPipelineConfig()
 	assert.NoError(err)
 	assert.True(validatePipelineConfig(stages, parameters))
@@ -761,7 +782,7 @@ func TestMergeMetricsConfigurationNoIgnore(t *testing.T) {
 
 	cfg := getConfig()
 
-	b := newMonolithBuilder("namespace", image, &cfg, true)
+	b := monoBuilder("namespace", &cfg)
 	stages, parameters, cm, err := b.buildPipelineConfig()
 	assert.NoError(err)
 	assert.NotNil(cm)
@@ -790,7 +811,7 @@ func TestMergeMetricsConfigurationWithIgnore(t *testing.T) {
 	cfg := getConfig()
 	cfg.Processor.Metrics.IgnoreTags = []string{"nodes"}
 
-	b := newMonolithBuilder("namespace", image, &cfg, true)
+	b := monoBuilder("namespace", &cfg)
 	stages, parameters, cm, err := b.buildPipelineConfig()
 	assert.NoError(err)
 	assert.NotNil(cm)
@@ -813,7 +834,7 @@ func TestMergeMetricsConfigurationIgnoreAll(t *testing.T) {
 	cfg := getConfig()
 	cfg.Processor.Metrics.IgnoreTags = []string{"nodes", "namespaces", "workloads"}
 
-	b := newMonolithBuilder("namespace", image, &cfg, true)
+	b := monoBuilder("namespace", &cfg)
 	stages, parameters, cm, err := b.buildPipelineConfig()
 	assert.NoError(err)
 	assert.Nil(cm)
@@ -832,7 +853,7 @@ func TestPipelineWithExporter(t *testing.T) {
 		Kafka: flowslatest.FlowCollectorKafka{Address: "kafka-test", Topic: "topic-test"},
 	})
 
-	b := newMonolithBuilder("namespace", image, &cfg, true)
+	b := monoBuilder("namespace", &cfg)
 	stages, parameters, _, err := b.buildPipelineConfig()
 	assert.NoError(err)
 	assert.True(validatePipelineConfig(stages, parameters))

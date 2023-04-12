@@ -377,7 +377,6 @@ func autoConvert_v1alpha1_ConfigOrSecret_To_v1beta1_ConfigOrSecret(in *ConfigOrS
 	out.Type = v1beta1.MountableType(in.Type)
 	out.Name = in.Name
 	out.Namespace = in.Namespace
-	out.Filename = in.Filename
 	return nil
 }
 
@@ -390,7 +389,6 @@ func autoConvert_v1beta1_ConfigOrSecret_To_v1alpha1_ConfigOrSecret(in *v1beta1.C
 	out.Type = MountableType(in.Type)
 	out.Name = in.Name
 	out.Namespace = in.Namespace
-	out.Filename = in.Filename
 	return nil
 }
 
@@ -1032,11 +1030,12 @@ func Convert_v1beta1_QuickFilter_To_v1alpha1_QuickFilter(in *v1beta1.QuickFilter
 }
 
 func autoConvert_v1alpha1_SASLConfig_To_v1beta1_SASLConfig(in *SASLConfig, out *v1beta1.SASLConfig, s conversion.Scope) error {
-	out.Type = in.Type
-	out.Username = in.Username
-	if err := Convert_v1alpha1_ConfigOrSecret_To_v1beta1_ConfigOrSecret(&in.Secret, &out.Secret, s); err != nil {
+	out.Type = v1beta1.SASLType(in.Type)
+	if err := Convert_v1alpha1_ConfigOrSecret_To_v1beta1_ConfigOrSecret(&in.SecretRef, &out.SecretRef, s); err != nil {
 		return err
 	}
+	out.ClientIDKey = in.ClientIDKey
+	out.ClientSecretKey = in.ClientSecretKey
 	return nil
 }
 
@@ -1046,11 +1045,12 @@ func Convert_v1alpha1_SASLConfig_To_v1beta1_SASLConfig(in *SASLConfig, out *v1be
 }
 
 func autoConvert_v1beta1_SASLConfig_To_v1alpha1_SASLConfig(in *v1beta1.SASLConfig, out *SASLConfig, s conversion.Scope) error {
-	out.Type = in.Type
-	out.Username = in.Username
-	if err := Convert_v1beta1_ConfigOrSecret_To_v1alpha1_ConfigOrSecret(&in.Secret, &out.Secret, s); err != nil {
+	out.Type = string(in.Type)
+	if err := Convert_v1beta1_ConfigOrSecret_To_v1alpha1_ConfigOrSecret(&in.SecretRef, &out.SecretRef, s); err != nil {
 		return err
 	}
+	out.ClientIDKey = in.ClientIDKey
+	out.ClientSecretKey = in.ClientSecretKey
 	return nil
 }
 

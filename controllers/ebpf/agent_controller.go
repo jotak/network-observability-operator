@@ -3,12 +3,13 @@ package ebpf
 import (
 	"context"
 	"fmt"
+	"path"
 	"strconv"
 	"strings"
 
 	"github.com/netobserv/network-observability-operator/controllers/ebpf/internal/permissions"
 	"github.com/netobserv/network-observability-operator/controllers/operator"
-	"github.com/netobserv/network-observability-operator/pkg/discover"
+	"github.com/netobserv/network-observability-operator/controllers/reconcilers"
 	"github.com/netobserv/network-observability-operator/pkg/volumes"
 	"github.com/netobserv/network-observability-operator/pkg/watchers"
 	v1 "k8s.io/api/apps/v1"
@@ -43,6 +44,10 @@ const (
 	envKafkaTLSCACertPath         = "KAFKA_TLS_CA_CERT_PATH"
 	envKafkaTLSUserCertPath       = "KAFKA_TLS_USER_CERT_PATH"
 	envKafkaTLSUserKeyPath        = "KAFKA_TLS_USER_KEY_PATH"
+	envKafkaEnableSASL            = "KAFKA_ENABLE_SASL"
+	envKafkaSASLType              = "KAFKA_SASL_TYPE"
+	envKafkaSASLIDPath            = "KAFKA_SASL_CLIENT_ID_PATH"
+	envKafkaSASLSecretPath        = "KAFKA_SASL_CLIENT_SECRET_PATH"
 	envLogLevel                   = "LOG_LEVEL"
 	envDedupe                     = "DEDUPER"
 	dedupeDefault                 = "firstCome"
@@ -72,32 +77,17 @@ const (
 // associated objects that are required to bind the proper permissions: namespace, service
 // accounts, SecurityContextConstraints...
 type AgentController struct {
-	client                      helper.ClientHelper
-	privilegedNamespace         string
-	previousPrivilegedNamespace string
-	permissions                 permissions.Reconciler
-	config                      *operator.Config
-	volumes                     volumes.Builder
-	watcher                     *watchers.Watcher
+	reconcilers.Common
+	permissions permissions.Reconciler
+	config      *operator.Config
+	volumes     volumes.Builder
 }
 
-func NewAgentController(
-	client helper.ClientHelper,
-	baseNamespace string,
-	previousBaseNamespace string,
-	permissionsVendor *discover.Permissions,
-	config *operator.Config,
-	watcher *watchers.Watcher,
-) *AgentController {
-	pns := baseNamespace + constants.EBPFPrivilegedNSSuffix
-	opns := previousBaseNamespace + constants.EBPFPrivilegedNSSuffix
+func NewAgentController(common *reconcilers.Common, config *operator.Config) *AgentController {
 	return &AgentController{
-		client:                      client,
-		privilegedNamespace:         pns,
-		previousPrivilegedNamespace: opns,
-		permissions:                 permissions.NewReconciler(client, pns, opns, permissionsVendor),
-		config:                      config,
-		watcher:                     watcher,
+		Common:      *common,
+		permissions: permissions.NewReconciler(common),
+		config:      config,
 	}
 }
 
@@ -109,7 +99,7 @@ func (c *AgentController) Reconcile(
 	if err != nil {
 		return fmt.Errorf("fetching current EBPF Agent: %w", err)
 	}
-	if !helper.UseEBPF(&target.Spec) || c.previousPrivilegedNamespace != c.privilegedNamespace {
+	if !helper.UseEBPF(&target.Spec) || c.PreviousPrivilegedNamespace() != c.PrivilegedNamespace() {
 		if current == nil {
 			rlog.Info("nothing to do, as the requested agent is not eBPF",
 				"currentAgent", target.Spec.Agent)
@@ -119,7 +109,7 @@ func (c *AgentController) Reconcile(
 		// undeploy the agent
 		rlog.Info("user changed the agent type, or the target namespace. Deleting eBPF agent",
 			"currentAgent", target.Spec.Agent)
-		if err := c.client.Delete(ctx, current); err != nil {
+		if err := c.Delete(ctx, current); err != nil {
 			if errors.IsNotFound(err) {
 				return nil
 			}
@@ -140,28 +130,28 @@ func (c *AgentController) Reconcile(
 	switch c.requiredAction(current, desired) {
 	case actionCreate:
 		rlog.Info("action: create agent")
-		return c.client.CreateOwned(ctx, desired)
+		return c.CreateOwned(ctx, desired)
 	case actionUpdate:
 		rlog.Info("action: update agent")
-		return c.client.UpdateOwned(ctx, current, desired)
+		return c.UpdateOwned(ctx, current, desired)
 	default:
 		rlog.Info("action: nothing to do")
-		c.client.CheckDaemonSetInProgress(current)
+		c.CheckDaemonSetInProgress(current)
 		return nil
 	}
 }
 
 func (c *AgentController) current(ctx context.Context) (*v1.DaemonSet, error) {
 	agentDS := v1.DaemonSet{}
-	if err := c.client.Get(ctx, types.NamespacedName{
+	if err := c.Get(ctx, types.NamespacedName{
 		Name:      constants.EBPFAgentName,
-		Namespace: c.previousPrivilegedNamespace,
+		Namespace: c.PreviousPrivilegedNamespace(),
 	}, &agentDS); err != nil {
 		if errors.IsNotFound(err) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("can't read DaemonSet %s/%s: %w",
-			c.previousPrivilegedNamespace, constants.EBPFAgentName, err)
+			c.PreviousPrivilegedNamespace(), constants.EBPFAgentName, err)
 	}
 	return &agentDS, nil
 }
@@ -180,7 +170,7 @@ func (c *AgentController) desired(ctx context.Context, coll *flowslatest.FlowCol
 	return &v1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      constants.EBPFAgentName,
-			Namespace: c.privilegedNamespace,
+			Namespace: c.PrivilegedNamespace(),
 			Labels: map[string]string{
 				"app":     constants.EBPFAgentName,
 				"version": helper.MaxLabelLength(version),
@@ -285,7 +275,7 @@ func (c *AgentController) envConfig(ctx context.Context, coll *flowslatest.FlowC
 		if coll.Spec.Kafka.TLS.Enable {
 			// Annotate pod with certificate reference so that it is reloaded if modified
 			// If user cert is provided, it will use mTLS. Else, simple TLS (the userDigest and paths will be empty)
-			caDigest, userDigest, err := c.watcher.ProcessMTLSCerts(ctx, c.client, &coll.Spec.Kafka.TLS, c.privilegedNamespace)
+			caDigest, userDigest, err := c.Watcher.ProcessMTLSCerts(ctx, c.ClientHelper, &coll.Spec.Kafka.TLS, c.PrivilegedNamespace())
 			if err != nil {
 				return nil, err
 			}
@@ -299,6 +289,27 @@ func (c *AgentController) envConfig(ctx context.Context, coll *flowslatest.FlowC
 				corev1.EnvVar{Name: envKafkaTLSCACertPath, Value: caPath},
 				corev1.EnvVar{Name: envKafkaTLSUserCertPath, Value: userCertPath},
 				corev1.EnvVar{Name: envKafkaTLSUserKeyPath, Value: userKeyPath},
+			)
+		}
+		if helper.UseSASL(&coll.Spec.Kafka.SASL) {
+			sasl := &coll.Spec.Kafka.SASL
+			// Annotate pod with secret reference so that it is reloaded if modified
+			digest, err := c.Watcher.ProcessSASL(ctx, c.ClientHelper, sasl, c.PrivilegedNamespace())
+			if err != nil {
+				return nil, err
+			}
+			annots[watchers.Annotation("kafka-sd")] = digest
+
+			t := "plain"
+			if coll.Spec.Kafka.SASL.Type == flowslatest.SASLScramSHA512 {
+				t = "scramSHA512"
+			}
+			basePath := c.volumes.AddVolume(&sasl.SecretRef, "kafka-sasl")
+			config = append(config,
+				corev1.EnvVar{Name: envKafkaEnableSASL, Value: "true"},
+				corev1.EnvVar{Name: envKafkaSASLType, Value: t},
+				corev1.EnvVar{Name: envKafkaSASLIDPath, Value: path.Join(basePath, sasl.ClientIDKey)},
+				corev1.EnvVar{Name: envKafkaSASLSecretPath, Value: path.Join(basePath, sasl.ClientSecretKey)},
 			)
 		}
 	} else {

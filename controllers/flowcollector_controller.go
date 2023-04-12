@@ -6,6 +6,7 @@ import (
 	"net"
 
 	"github.com/netobserv/network-observability-operator/controllers/operator"
+	"github.com/netobserv/network-observability-operator/controllers/reconcilers"
 	osv1alpha1 "github.com/openshift/api/console/v1alpha1"
 	securityv1 "github.com/openshift/api/security/v1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -61,8 +62,8 @@ func NewFlowCollectorReconciler(client client.Client, scheme *runtime.Scheme, co
 }
 
 //+kubebuilder:rbac:groups=apps,resources=deployments;daemonsets,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=core,resources=namespaces;services;serviceaccounts;configmaps,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=core,resources=secrets;endpoints,verbs=get;list;watch
+//+kubebuilder:rbac:groups=core,resources=namespaces;services;serviceaccounts;configmaps;secrets,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core,resources=endpoints,verbs=get;list;watch
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles;roles,verbs=get;create;delete;watch;list
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterrolebindings;rolebindings,verbs=get;list;create;delete;update;watch
 //+kubebuilder:rbac:groups=console.openshift.io,resources=consoleplugins,verbs=get;create;delete;update;patch;list;watch
@@ -98,19 +99,19 @@ func (r *FlowCollectorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	ns := getNamespaceName(desired)
 	r.watcher.Reset(ns)
 
-	clientHelper := r.newClientHelper(desired)
 	previousNamespace := desired.Status.Namespace
+	reconcilersInfo := r.newCommonInfo(ctx, desired, ns, previousNamespace)
 
-	err = r.reconcileOperator(ctx, clientHelper, ns, desired)
+	err = r.reconcileOperator(ctx, &reconcilersInfo, desired)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
 	// Create reconcilers
-	flpReconciler := flowlogspipeline.NewReconciler(ctx, clientHelper, ns, previousNamespace, r.config.FlowlogsPipelineImage, &r.permissions, r.availableAPIs)
+	flpReconciler := flowlogspipeline.NewReconciler(&reconcilersInfo, r.config.FlowlogsPipelineImage)
 	var cpReconciler consoleplugin.CPReconciler
 	if r.availableAPIs.HasConsolePlugin() {
-		cpReconciler = consoleplugin.NewReconciler(clientHelper, ns, previousNamespace, r.config.ConsolePluginImage, r.availableAPIs)
+		cpReconciler = consoleplugin.NewReconciler(&reconcilersInfo, r.config.ConsolePluginImage)
 	}
 
 	// Check namespace changed
@@ -127,26 +128,19 @@ func (r *FlowCollectorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	// OVS config map for CNO
 	if r.availableAPIs.HasCNO() {
-		ovsConfigController := ovs.NewFlowsConfigCNOController(clientHelper,
-			ns,
-			desired.Spec.Agent.IPFIX.ClusterNetworkOperator.Namespace,
-			ovsFlowsConfigMapName,
-			r.lookupIP)
+		ovsConfigController := ovs.NewFlowsConfigCNOController(&reconcilersInfo, desired.Spec.Agent.IPFIX.ClusterNetworkOperator.Namespace, ovsFlowsConfigMapName)
 		if err := ovsConfigController.Reconcile(ctx, desired); err != nil {
 			return ctrl.Result{}, r.failure(ctx, conditions.ReconcileCNOFailed(err), desired)
 		}
 	} else {
-		ovsConfigController := ovs.NewFlowsConfigOVNKController(clientHelper,
-			ns,
-			desired.Spec.Agent.IPFIX.OVNKubernetes,
-			r.lookupIP)
+		ovsConfigController := ovs.NewFlowsConfigOVNKController(&reconcilersInfo, desired.Spec.Agent.IPFIX.OVNKubernetes)
 		if err := ovsConfigController.Reconcile(ctx, desired); err != nil {
 			return ctrl.Result{}, r.failure(ctx, conditions.ReconcileOVNKFailed(err), desired)
 		}
 	}
 
 	// eBPF agent
-	ebpfAgentController := ebpf.NewAgentController(clientHelper, ns, previousNamespace, &r.permissions, r.config, r.watcher)
+	ebpfAgentController := ebpf.NewAgentController(&reconcilersInfo, r.config)
 	if err := ebpfAgentController.Reconcile(ctx, desired); err != nil {
 		return ctrl.Result{}, r.failure(ctx, conditions.ReconcileAgentFailed(err), desired)
 	}
@@ -161,9 +155,9 @@ func (r *FlowCollectorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	// Set readiness status
 	var status *metav1.Condition
-	if clientHelper.DidChange() {
+	if reconcilersInfo.DidChange() {
 		status = conditions.Updating()
-	} else if clientHelper.IsInProgress() {
+	} else if reconcilersInfo.IsInProgress() {
 		status = conditions.DeploymentInProgress()
 	} else {
 		status = conditions.Ready()
@@ -286,13 +280,13 @@ func (r *FlowCollectorReconciler) namespaceExist(ctx context.Context, nsName str
 	return ns, nil
 }
 
-func (r *FlowCollectorReconciler) reconcileOperator(ctx context.Context, clientHelper helper.ClientHelper, ns string, desired *flowslatest.FlowCollector) error {
+func (r *FlowCollectorReconciler) reconcileOperator(ctx context.Context, cmn *reconcilers.Common, desired *flowslatest.FlowCollector) error {
 	// If namespace does not exist, we create it
-	nsExist, err := r.namespaceExist(ctx, ns)
+	nsExist, err := r.namespaceExist(ctx, cmn.Namespace)
 	if err != nil {
 		return err
 	}
-	desiredNs := buildNamespace(ns, r.config.DownstreamDeployment)
+	desiredNs := buildNamespace(cmn.Namespace, r.config.DownstreamDeployment)
 	if nsExist == nil {
 		err = r.Create(ctx, desiredNs)
 		if err != nil {
@@ -305,18 +299,18 @@ func (r *FlowCollectorReconciler) reconcileOperator(ctx context.Context, clientH
 		}
 	}
 	if r.config.DownstreamDeployment {
-		desiredRole := buildRoleMonitoringReader(ns)
-		if err := clientHelper.ReconcileClusterRole(ctx, desiredRole); err != nil {
+		desiredRole := buildRoleMonitoringReader(cmn.Namespace)
+		if err := cmn.ReconcileClusterRole(ctx, desiredRole); err != nil {
 			return err
 		}
-		desiredBinding := buildRoleBindingMonitoringReader(ns)
-		if err := clientHelper.ReconcileClusterRoleBinding(ctx, desiredBinding); err != nil {
+		desiredBinding := buildRoleBindingMonitoringReader(cmn.Namespace)
+		if err := cmn.ReconcileClusterRoleBinding(ctx, desiredBinding); err != nil {
 			return err
 		}
 	}
 	if r.availableAPIs.HasSvcMonitor() {
 		desiredHealthDashboardCM := buildHealthDashboard()
-		if err := clientHelper.ReconcileConfigMap(ctx, desiredHealthDashboardCM); err != nil {
+		if err := cmn.ReconcileConfigMap(ctx, desiredHealthDashboardCM); err != nil {
 			return err
 		}
 	}
@@ -353,11 +347,8 @@ func (r *FlowCollectorReconciler) checkFinalizer(ctx context.Context, desired *f
 func (r *FlowCollectorReconciler) finalize(ctx context.Context, desired *flowslatest.FlowCollector) error {
 	if !r.availableAPIs.HasCNO() {
 		ns := getNamespaceName(desired)
-		clientHelper := r.newClientHelper(desired)
-		ovsConfigController := ovs.NewFlowsConfigOVNKController(clientHelper,
-			ns,
-			desired.Spec.Agent.IPFIX.OVNKubernetes,
-			r.lookupIP)
+		info := r.newCommonInfo(ctx, desired, ns, ns)
+		ovsConfigController := ovs.NewFlowsConfigOVNKController(&info, desired.Spec.Agent.IPFIX.OVNKubernetes)
 		if err := ovsConfigController.Finalize(ctx, desired); err != nil {
 			return fmt.Errorf("failed to finalize ovn-kubernetes reconciler: %w", err)
 		}
@@ -365,12 +356,19 @@ func (r *FlowCollectorReconciler) finalize(ctx context.Context, desired *flowsla
 	return nil
 }
 
-func (r *FlowCollectorReconciler) newClientHelper(desired *flowslatest.FlowCollector) helper.ClientHelper {
-	return helper.ClientHelper{
-		Client: r.Client,
-		SetControllerReference: func(obj client.Object) error {
-			return ctrl.SetControllerReference(desired, obj, r.Scheme)
+func (r *FlowCollectorReconciler) newCommonInfo(ctx context.Context, desired *flowslatest.FlowCollector, ns, prevNs string) reconcilers.Common {
+	return reconcilers.Common{
+		ClientHelper: helper.ClientHelper{
+			Client: r.Client,
+			SetControllerReference: func(obj client.Object) error {
+				return ctrl.SetControllerReference(desired, obj, r.Scheme)
+			},
 		},
+		Namespace:         ns,
+		PreviousNamespace: prevNs,
+		UseOpenShiftSCC:   r.permissions.Vendor(ctx) == discover.VendorOpenShift,
+		AvailableAPIs:     r.availableAPIs,
+		Watcher:           r.watcher,
 	}
 }
 

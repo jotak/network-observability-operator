@@ -4,7 +4,6 @@ import (
 	"context"
 	"reflect"
 
-	"github.com/netobserv/network-observability-operator/pkg/discover"
 	osv1alpha1 "github.com/openshift/api/console/v1alpha1"
 	operatorsv1 "github.com/openshift/api/operator/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -26,11 +25,10 @@ type pluginSpec = flowslatest.FlowCollectorConsolePlugin
 
 // CPReconciler reconciles the current console plugin state with the desired configuration
 type CPReconciler struct {
-	helper.ClientHelper
-	nobjMngr      *reconcilers.NamespacedObjectManager
-	owned         ownedObjects
-	image         string
-	availableAPIs *discover.AvailableAPIs
+	reconcilers.Common
+	Managed *reconcilers.NamespacedObjectManager
+	owned   ownedObjects
+	image   string
 }
 
 type ownedObjects struct {
@@ -42,7 +40,7 @@ type ownedObjects struct {
 	serviceMonitor *monitoringv1.ServiceMonitor
 }
 
-func NewReconciler(cl helper.ClientHelper, ns, prevNS, imageName string, availableAPIs *discover.AvailableAPIs) CPReconciler {
+func NewReconciler(common *reconcilers.Common, imageName string) CPReconciler {
 	owned := ownedObjects{
 		deployment:     &appsv1.Deployment{},
 		service:        &corev1.Service{},
@@ -51,29 +49,29 @@ func NewReconciler(cl helper.ClientHelper, ns, prevNS, imageName string, availab
 		configMap:      &corev1.ConfigMap{},
 		serviceMonitor: &monitoringv1.ServiceMonitor{},
 	}
-	nobjMngr := reconcilers.NewNamespacedObjectManager(cl, ns, prevNS)
-	nobjMngr.AddManagedObject(constants.PluginName, owned.deployment)
-	nobjMngr.AddManagedObject(constants.PluginName, owned.service)
-	nobjMngr.AddManagedObject(constants.PluginName, owned.hpa)
-	nobjMngr.AddManagedObject(constants.PluginName, owned.serviceAccount)
-	nobjMngr.AddManagedObject(configMapName, owned.configMap)
-	if availableAPIs.HasSvcMonitor() {
-		nobjMngr.AddManagedObject(constants.PluginName, owned.serviceMonitor)
+	Managed := reconcilers.NewNamespacedObjectManager(common)
+	Managed.AddManagedObject(constants.PluginName, owned.deployment)
+	Managed.AddManagedObject(constants.PluginName, owned.service)
+	Managed.AddManagedObject(constants.PluginName, owned.hpa)
+	Managed.AddManagedObject(constants.PluginName, owned.serviceAccount)
+	Managed.AddManagedObject(configMapName, owned.configMap)
+	if common.AvailableAPIs.HasSvcMonitor() {
+		Managed.AddManagedObject(constants.PluginName, owned.serviceMonitor)
 	}
 
-	return CPReconciler{ClientHelper: cl, nobjMngr: nobjMngr, owned: owned, image: imageName, availableAPIs: availableAPIs}
+	return CPReconciler{Common: *common, Managed: Managed, owned: owned, image: imageName}
 }
 
 // CleanupNamespace cleans up old namespace
 func (r *CPReconciler) CleanupNamespace(ctx context.Context) {
-	r.nobjMngr.CleanupPreviousNamespace(ctx)
+	r.Managed.CleanupPreviousNamespace(ctx)
 }
 
 // Reconcile is the reconciler entry point to reconcile the current plugin state with the desired configuration
 func (r *CPReconciler) Reconcile(ctx context.Context, desired *flowslatest.FlowCollector) error {
-	ns := r.nobjMngr.Namespace
+	ns := r.Managed.Namespace
 	// Retrieve current owned objects
-	err := r.nobjMngr.FetchAll(ctx)
+	err := r.Managed.FetchAll(ctx)
 	if err != nil {
 		return err
 	}
@@ -134,7 +132,7 @@ func (r *CPReconciler) checkAutoPatch(ctx context.Context, desired *flowslatest.
 }
 
 func (r *CPReconciler) reconcilePermissions(ctx context.Context, builder *builder) error {
-	if !r.nobjMngr.Exists(r.owned.serviceAccount) {
+	if !r.Managed.Exists(r.owned.serviceAccount) {
 		return r.CreateOwned(ctx, builder.serviceAccount())
 	} // update not needed for now
 
@@ -179,7 +177,7 @@ func (r *CPReconciler) reconcilePlugin(ctx context.Context, builder *builder, de
 
 func (r *CPReconciler) reconcileConfigMap(ctx context.Context, builder *builder, desired *flowslatest.FlowCollectorSpec) (string, error) {
 	newCM, configDigest := builder.configMap()
-	if !r.nobjMngr.Exists(r.owned.configMap) {
+	if !r.Managed.Exists(r.owned.configMap) {
 		if err := r.CreateOwned(ctx, newCM); err != nil {
 			return "", err
 		}
@@ -196,7 +194,7 @@ func (r *CPReconciler) reconcileDeployment(ctx context.Context, builder *builder
 	defer report.LogIfNeeded(ctx)
 
 	newDepl := builder.deployment(cmDigest)
-	if !r.nobjMngr.Exists(r.owned.deployment) {
+	if !r.Managed.Exists(r.owned.deployment) {
 		if err := r.CreateOwned(ctx, newDepl); err != nil {
 			return err
 		}
@@ -214,7 +212,7 @@ func (r *CPReconciler) reconcileService(ctx context.Context, builder *builder, d
 	report := helper.NewChangeReport("Console service")
 	defer report.LogIfNeeded(ctx)
 
-	if !r.nobjMngr.Exists(r.owned.service) {
+	if !r.Managed.Exists(r.owned.service) {
 		newSVC := builder.service(nil)
 		if err := r.CreateOwned(ctx, newSVC); err != nil {
 			return err
@@ -225,9 +223,9 @@ func (r *CPReconciler) reconcileService(ctx context.Context, builder *builder, d
 			return err
 		}
 	}
-	if r.availableAPIs.HasSvcMonitor() {
+	if r.AvailableAPIs.HasSvcMonitor() {
 		serviceMonitor := builder.serviceMonitor()
-		if err := reconcilers.GenericReconcile(ctx, r.nobjMngr, &r.ClientHelper, r.owned.serviceMonitor, serviceMonitor, &report, helper.ServiceMonitorChanged); err != nil {
+		if err := reconcilers.GenericReconcile(ctx, r.Managed, &r.ClientHelper, r.owned.serviceMonitor, serviceMonitor, &report, helper.ServiceMonitorChanged); err != nil {
 			return err
 		}
 	}
@@ -240,10 +238,10 @@ func (r *CPReconciler) reconcileHPA(ctx context.Context, builder *builder, desir
 
 	// Delete or Create / Update Autoscaler according to HPA option
 	if helper.HPADisabled(&desired.ConsolePlugin.Autoscaler) {
-		r.nobjMngr.TryDelete(ctx, r.owned.hpa)
+		r.Managed.TryDelete(ctx, r.owned.hpa)
 	} else {
 		newASC := builder.autoScaler()
-		if !r.nobjMngr.Exists(r.owned.hpa) {
+		if !r.Managed.Exists(r.owned.hpa) {
 			if err := r.CreateOwned(ctx, newASC); err != nil {
 				return err
 			}

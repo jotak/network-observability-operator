@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -72,14 +73,14 @@ func (w *Watcher) isWatched(kind flowslatest.MountableType, name, namespace stri
 }
 
 func (w *Watcher) ProcessMTLSCerts(ctx context.Context, cl helper.ClientHelper, tls *flowslatest.ClientTLS, targetNamespace string) (caDigest string, userDigest string, err error) {
-	if tls.CACert.Name != "" {
+	if tls.Enable && tls.CACert.Name != "" {
 		caRef := w.refFromCert(&tls.CACert)
 		caDigest, err = w.reconcile(ctx, cl, caRef, targetNamespace)
 		if err != nil {
 			return "", "", err
 		}
 	}
-	if tls.UserCert.Name != "" {
+	if tls.Enable && tls.UserCert.Name != "" {
 		userRef := w.refFromCert(&tls.UserCert)
 		userDigest, err = w.reconcile(ctx, cl, userRef, targetNamespace)
 		if err != nil {
@@ -89,8 +90,19 @@ func (w *Watcher) ProcessMTLSCerts(ctx context.Context, cl helper.ClientHelper, 
 	return caDigest, userDigest, nil
 }
 
-func (w *Watcher) Process(ctx context.Context, cl helper.ClientHelper, cos *flowslatest.ConfigOrSecret, targetNamespace string) (string, error) {
-	return w.reconcile(ctx, cl, w.refFromConfigOrSecret(cos), targetNamespace)
+func (w *Watcher) ProcessCACert(ctx context.Context, cl helper.ClientHelper, tls *flowslatest.ClientTLS, targetNamespace string) (caDigest string, err error) {
+	if tls.Enable && tls.CACert.Name != "" {
+		caRef := w.refFromCert(&tls.CACert)
+		caDigest, err = w.reconcile(ctx, cl, caRef, targetNamespace)
+		if err != nil {
+			return "", err
+		}
+	}
+	return caDigest, nil
+}
+
+func (w *Watcher) ProcessSASL(ctx context.Context, cl helper.ClientHelper, sasl *flowslatest.SASLConfig, targetNamespace string) (string, error) {
+	return w.reconcile(ctx, cl, w.refFromConfigOrSecret(&sasl.SecretRef, []string{sasl.ClientIDKey, sasl.ClientSecretKey}), targetNamespace)
 }
 
 func (w *Watcher) reconcile(ctx context.Context, cl helper.ClientHelper, ref objectRef, destNamespace string) (string, error) {
@@ -109,7 +121,10 @@ func (w *Watcher) reconcile(ctx context.Context, cl helper.ClientHelper, ref obj
 	if err != nil {
 		return "", err
 	}
-	digest := watchable.GetDigest(obj, ref.keys)
+	digest, err := watchable.GetDigest(obj, ref.keys)
+	if err != nil {
+		return "", err
+	}
 	if ref.namespace != destNamespace {
 		// copy to namespace
 		target := watchable.ProvidePlaceholder()
@@ -119,19 +134,20 @@ func (w *Watcher) reconcile(ctx context.Context, cl helper.ClientHelper, ref obj
 				return "", err
 			}
 			rlog.Info(fmt.Sprintf("creating %s %s in namespace %s", ref.kind, ref.name, destNamespace))
-			obj.SetName(ref.name)
-			obj.SetNamespace(destNamespace)
-			obj.SetAnnotations(map[string]string{
-				constants.NamespaceCopyAnnotation: ref.namespace + "/" + ref.name,
+			watchable.PrepareForCreate(obj, &metav1.ObjectMeta{
+				Name:      ref.name,
+				Namespace: destNamespace,
+				Annotations: map[string]string{
+					constants.NamespaceCopyAnnotation: ref.namespace + "/" + ref.name,
+				},
 			})
-			obj.SetName(ref.name)
 			if err := cl.CreateOwned(ctx, obj); err != nil {
 				return "", err
 			}
 		} else {
 			// Update existing
 			rlog.Info(fmt.Sprintf("updating %s %s in namespace %s", ref.kind, ref.name, destNamespace))
-			watchable.Update(obj, target)
+			watchable.PrepareForUpdate(obj, target)
 			if err := cl.UpdateOwned(ctx, target, target); err != nil {
 				return "", err
 			}

@@ -667,10 +667,12 @@ type ClientTLS struct {
 	UserCert CertificateReference `json:"userCert,omitempty"`
 }
 
+type SASLType string
+
 const (
-	SASLDisabled    = "DISABLED"
-	SASLPlain       = "PLAIN"
-	SASLScramSHA512 = "SCRAM-SHA512"
+	SASLDisabled    SASLType = "DISABLED"
+	SASLPlain       SASLType = "PLAIN"
+	SASLScramSHA512 SASLType = "SCRAM-SHA512"
 )
 
 // SASLConfig defines SASL configuration
@@ -678,13 +680,16 @@ type SASLConfig struct {
 	//+kubebuilder:validation:Enum=DISABLED;PLAIN;SCRAM-SHA512
 	//+kubebuilder:default:=DISABLED
 	// type is the type of SASL authentication to use, or DISABLED if SASL is not used
-	Type string `json:"type,omitempty"`
+	Type SASLType `json:"type,omitempty"`
 
-	// username to provide for SASL authentication
-	Username string `json:"username,omitempty"`
+	// reference to the secret (or config map) containing the client ID and secret
+	SecretRef ConfigOrSecret `json:"secretRef,omitempty"`
 
-	// reference to the secret containing the SASL password
-	Secret ConfigOrSecret `json:"secret,omitempty"`
+	// key for ClientID within the provided secretRef
+	ClientIDKey string `json:"clientIDKey,omitempty"`
+
+	// key for ClientSecret within the provided secretRef
+	ClientSecretKey string `json:"clientSecretKey,omitempty"`
 }
 
 type MountableType string
@@ -707,9 +712,6 @@ type ConfigOrSecret struct {
 	// If the namespace is different, the config map or the secret will be copied so that it can be mounted as required.
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
-
-	// file name reference within secret or config map
-	Filename string `json:"key,omitempty"`
 }
 
 // DebugConfig allows tweaking some aspects of the internal configuration of the agent and FLP.

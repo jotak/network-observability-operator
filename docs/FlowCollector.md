@@ -1765,10 +1765,24 @@ sasl authentication configuration. Note that, when eBPF agents are used, the SAS
         </tr>
     </thead>
     <tbody><tr>
-        <td><b><a href="#flowcollectorspecexportersindexkafkasaslsecret">secret</a></b></td>
+        <td><b>clientIDKey</b></td>
+        <td>string</td>
+        <td>
+          key for ClientID within the provided secretRef<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>clientSecretKey</b></td>
+        <td>string</td>
+        <td>
+          key for ClientSecret within the provided secretRef<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b><a href="#flowcollectorspecexportersindexkafkasaslsecretref">secretRef</a></b></td>
         <td>object</td>
         <td>
-          reference to the secret containing the SASL password<br/>
+          reference to the secret (or config map) containing the client ID and secret<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -1781,23 +1795,16 @@ sasl authentication configuration. Note that, when eBPF agents are used, the SAS
             <i>Default</i>: DISABLED<br/>
         </td>
         <td>false</td>
-      </tr><tr>
-        <td><b>username</b></td>
-        <td>string</td>
-        <td>
-          username to provide for SASL authentication<br/>
-        </td>
-        <td>false</td>
       </tr></tbody>
 </table>
 
 
-### FlowCollector.spec.exporters[index].kafka.sasl.secret
+### FlowCollector.spec.exporters[index].kafka.sasl.secretRef
 <sup><sup>[↩ Parent](#flowcollectorspecexportersindexkafkasasl)</sup></sup>
 
 
 
-reference to the secret containing the SASL password
+reference to the secret (or config map) containing the client ID and secret
 
 <table>
     <thead>
@@ -1809,13 +1816,6 @@ reference to the secret containing the SASL password
         </tr>
     </thead>
     <tbody><tr>
-        <td><b>key</b></td>
-        <td>string</td>
-        <td>
-          file name reference within secret or config map<br/>
-        </td>
-        <td>false</td>
-      </tr><tr>
         <td><b>name</b></td>
         <td>string</td>
         <td>
@@ -2081,10 +2081,24 @@ sasl authentication configuration. Note that, when eBPF agents are used, the SAS
         </tr>
     </thead>
     <tbody><tr>
-        <td><b><a href="#flowcollectorspeckafkasaslsecret">secret</a></b></td>
+        <td><b>clientIDKey</b></td>
+        <td>string</td>
+        <td>
+          key for ClientID within the provided secretRef<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>clientSecretKey</b></td>
+        <td>string</td>
+        <td>
+          key for ClientSecret within the provided secretRef<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b><a href="#flowcollectorspeckafkasaslsecretref">secretRef</a></b></td>
         <td>object</td>
         <td>
-          reference to the secret containing the SASL password<br/>
+          reference to the secret (or config map) containing the client ID and secret<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -2097,23 +2111,16 @@ sasl authentication configuration. Note that, when eBPF agents are used, the SAS
             <i>Default</i>: DISABLED<br/>
         </td>
         <td>false</td>
-      </tr><tr>
-        <td><b>username</b></td>
-        <td>string</td>
-        <td>
-          username to provide for SASL authentication<br/>
-        </td>
-        <td>false</td>
       </tr></tbody>
 </table>
 
 
-### FlowCollector.spec.kafka.sasl.secret
+### FlowCollector.spec.kafka.sasl.secretRef
 <sup><sup>[↩ Parent](#flowcollectorspeckafkasasl)</sup></sup>
 
 
 
-reference to the secret containing the SASL password
+reference to the secret (or config map) containing the client ID and secret
 
 <table>
     <thead>
@@ -2125,13 +2132,6 @@ reference to the secret containing the SASL password
         </tr>
     </thead>
     <tbody><tr>
-        <td><b>key</b></td>
-        <td>string</td>
-        <td>
-          file name reference within secret or config map<br/>
-        </td>
-        <td>false</td>
-      </tr><tr>
         <td><b>name</b></td>
         <td>string</td>
         <td>
@@ -5801,10 +5801,24 @@ sasl authentication configuration. Note that, when eBPF agents are used, the SAS
         </tr>
     </thead>
     <tbody><tr>
-        <td><b><a href="#flowcollectorspecexportersindexkafkasaslsecret-1">secret</a></b></td>
+        <td><b>clientIDKey</b></td>
+        <td>string</td>
+        <td>
+          key for ClientID within the provided secretRef<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>clientSecretKey</b></td>
+        <td>string</td>
+        <td>
+          key for ClientSecret within the provided secretRef<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b><a href="#flowcollectorspecexportersindexkafkasaslsecretref-1">secretRef</a></b></td>
         <td>object</td>
         <td>
-          reference to the secret containing the SASL password<br/>
+          reference to the secret (or config map) containing the client ID and secret<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -5817,23 +5831,16 @@ sasl authentication configuration. Note that, when eBPF agents are used, the SAS
             <i>Default</i>: DISABLED<br/>
         </td>
         <td>false</td>
-      </tr><tr>
-        <td><b>username</b></td>
-        <td>string</td>
-        <td>
-          username to provide for SASL authentication<br/>
-        </td>
-        <td>false</td>
       </tr></tbody>
 </table>
 
 
-### FlowCollector.spec.exporters[index].kafka.sasl.secret
+### FlowCollector.spec.exporters[index].kafka.sasl.secretRef
 <sup><sup>[↩ Parent](#flowcollectorspecexportersindexkafkasasl-1)</sup></sup>
 
 
 
-reference to the secret containing the SASL password
+reference to the secret (or config map) containing the client ID and secret
 
 <table>
     <thead>
@@ -5845,13 +5852,6 @@ reference to the secret containing the SASL password
         </tr>
     </thead>
     <tbody><tr>
-        <td><b>key</b></td>
-        <td>string</td>
-        <td>
-          file name reference within secret or config map<br/>
-        </td>
-        <td>false</td>
-      </tr><tr>
         <td><b>name</b></td>
         <td>string</td>
         <td>
@@ -6117,10 +6117,24 @@ sasl authentication configuration. Note that, when eBPF agents are used, the SAS
         </tr>
     </thead>
     <tbody><tr>
-        <td><b><a href="#flowcollectorspeckafkasaslsecret-1">secret</a></b></td>
+        <td><b>clientIDKey</b></td>
+        <td>string</td>
+        <td>
+          key for ClientID within the provided secretRef<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b>clientSecretKey</b></td>
+        <td>string</td>
+        <td>
+          key for ClientSecret within the provided secretRef<br/>
+        </td>
+        <td>false</td>
+      </tr><tr>
+        <td><b><a href="#flowcollectorspeckafkasaslsecretref-1">secretRef</a></b></td>
         <td>object</td>
         <td>
-          reference to the secret containing the SASL password<br/>
+          reference to the secret (or config map) containing the client ID and secret<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -6133,23 +6147,16 @@ sasl authentication configuration. Note that, when eBPF agents are used, the SAS
             <i>Default</i>: DISABLED<br/>
         </td>
         <td>false</td>
-      </tr><tr>
-        <td><b>username</b></td>
-        <td>string</td>
-        <td>
-          username to provide for SASL authentication<br/>
-        </td>
-        <td>false</td>
       </tr></tbody>
 </table>
 
 
-### FlowCollector.spec.kafka.sasl.secret
+### FlowCollector.spec.kafka.sasl.secretRef
 <sup><sup>[↩ Parent](#flowcollectorspeckafkasasl-1)</sup></sup>
 
 
 
-reference to the secret containing the SASL password
+reference to the secret (or config map) containing the client ID and secret
 
 <table>
     <thead>
@@ -6161,13 +6168,6 @@ reference to the secret containing the SASL password
         </tr>
     </thead>
     <tbody><tr>
-        <td><b>key</b></td>
-        <td>string</td>
-        <td>
-          file name reference within secret or config map<br/>
-        </td>
-        <td>false</td>
-      </tr><tr>
         <td><b>name</b></td>
         <td>string</td>
         <td>

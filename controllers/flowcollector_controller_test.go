@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	timeout                    = time.Second * 10
+	timeout                    = time.Second * 3
 	interval                   = 50 * time.Millisecond
 	conntrackEndTimeout        = 10 * time.Second
 	conntrackHeartbeatInterval = 30 * time.Second

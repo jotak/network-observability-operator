@@ -29,9 +29,6 @@ const configMapName = "console-plugin-config"
 const configFile = "config.yaml"
 const configVolume = "config-volume"
 const configPath = "/opt/app-root/"
-const lokiCerts = "loki-certs"
-const lokiStatusCerts = "loki-status-certs"
-const tokensPath = "/var/run/secrets/tokens/"
 
 type builder struct {
 	namespace string
@@ -205,7 +202,7 @@ func (b *builder) buildArgs(desired *flowslatest.FlowCollectorSpec) []string {
 }
 
 func (b *builder) podTemplate(cmDigest string) *corev1.PodTemplateSpec {
-	volumes := b.volumes.AppendVolumes([]corev1.Volume{{
+	volumes := []corev1.Volume{{
 		Name: secretName,
 		VolumeSource: corev1.VolumeSource{
 			Secret: &corev1.SecretVolumeSource{
@@ -222,9 +219,9 @@ func (b *builder) podTemplate(cmDigest string) *corev1.PodTemplateSpec {
 			},
 		},
 	},
-	})
+	}
 
-	volumeMounts := b.volumes.AppendMounts([]corev1.VolumeMount{{
+	volumeMounts := []corev1.VolumeMount{{
 		Name:      secretName,
 		MountPath: "/var/serving-cert",
 		ReadOnly:  true,
@@ -233,7 +230,7 @@ func (b *builder) podTemplate(cmDigest string) *corev1.PodTemplateSpec {
 		MountPath: configPath,
 		ReadOnly:  true,
 	},
-	})
+	}
 
 	args := b.buildArgs(b.desired)
 
@@ -250,10 +247,10 @@ func (b *builder) podTemplate(cmDigest string) *corev1.PodTemplateSpec {
 				Image:           b.imageName,
 				ImagePullPolicy: corev1.PullPolicy(b.desired.ConsolePlugin.ImagePullPolicy),
 				Resources:       *b.desired.ConsolePlugin.Resources.DeepCopy(),
-				VolumeMounts:    volumeMounts,
+				VolumeMounts:    b.volumes.AppendMounts(volumeMounts),
 				Args:            args,
 			}},
-			Volumes:            volumes,
+			Volumes:            b.volumes.AppendVolumes(volumes),
 			ServiceAccountName: constants.PluginName,
 		},
 	}
