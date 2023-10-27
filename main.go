@@ -39,7 +39,6 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	apiregv1 "k8s.io/kube-aggregator/pkg/apis/apiregistration/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -52,6 +51,7 @@ import (
 	"github.com/netobserv/network-observability-operator/controllers"
 	"github.com/netobserv/network-observability-operator/controllers/constants"
 	"github.com/netobserv/network-observability-operator/controllers/operator"
+	"github.com/netobserv/network-observability-operator/pkg/cachefilter"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -121,6 +121,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	perObjectCache := cachefilter.NewPerObject(&corev1.ConfigMap{}, &corev1.Secret{})
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
 		Metrics: server.Options{
@@ -133,20 +135,17 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "7a7ecdcd.netobserv.io",
-		Client: client.Options{
-			Cache: &client.CacheOptions{
-				DisableFor: []client.Object{&corev1.ConfigMap{}, &corev1.Secret{}},
-			},
-		},
+		Cache:                  perObjectCache.Options,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
+	client := cachefilter.NewClient(mgr.GetClient(), perObjectCache)
 
 	ctrl.Log.Info("using eBPF Agent image", "image", config.EBPFAgentImage)
 
-	if err = controllers.NewFlowCollectorReconciler(mgr.GetClient(), mgr.GetScheme(), &config).
+	if err = controllers.NewFlowCollectorReconciler(client, mgr.GetScheme(), &config).
 		SetupWithManager(context.Background(), mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "FlowCollector")
 		os.Exit(1)
