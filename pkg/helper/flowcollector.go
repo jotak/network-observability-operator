@@ -191,13 +191,14 @@ func LokiTenantID(spec *flowslatest.FlowCollectorLoki) string {
 func LokiTLS(spec *flowslatest.FlowCollectorLoki) *flowslatest.ClientTLS {
 	switch spec.Mode {
 	case flowslatest.LokiModeLokiStack:
-		name, _ := getLokiStackNameAndNamespace(spec.LokiStack)
+		name, ns := getLokiStackNameAndNamespace(spec.LokiStack)
 		clientTLS := &flowslatest.ClientTLS{
 			Enable: true,
 			CACert: flowslatest.CertificateReference{
-				Type:     flowslatest.RefTypeConfigMap,
-				Name:     name + "-gateway-ca-bundle",
-				CertFile: "service-ca.crt",
+				Type:      flowslatest.RefTypeConfigMap,
+				Name:      name + "-gateway-ca-bundle",
+				Namespace: ns,
+				CertFile:  "service-ca.crt",
 			},
 			InsecureSkipVerify: false,
 		}
@@ -214,20 +215,22 @@ func LokiTLS(spec *flowslatest.FlowCollectorLoki) *flowslatest.ClientTLS {
 func LokiStatusTLS(spec *flowslatest.FlowCollectorLoki) *flowslatest.ClientTLS {
 	switch spec.Mode {
 	case flowslatest.LokiModeLokiStack:
-		name, _ := getLokiStackNameAndNamespace(spec.LokiStack)
+		name, ns := getLokiStackNameAndNamespace(spec.LokiStack)
 		clientTLS := &flowslatest.ClientTLS{
 			Enable: true,
 			CACert: flowslatest.CertificateReference{
-				Type:     flowslatest.RefTypeConfigMap,
-				Name:     name + "-ca-bundle",
-				CertFile: "service-ca.crt",
+				Type:      flowslatest.RefTypeConfigMap,
+				Name:      name + "-ca-bundle",
+				Namespace: ns,
+				CertFile:  "service-ca.crt",
 			},
 			InsecureSkipVerify: false,
 			UserCert: flowslatest.CertificateReference{
-				Type:     flowslatest.RefTypeSecret,
-				Name:     name + "-query-frontend-http",
-				CertFile: "tls.crt",
-				CertKey:  "tls.key",
+				Type:      flowslatest.RefTypeSecret,
+				Name:      name + "-query-frontend-http",
+				Namespace: ns,
+				CertFile:  "tls.crt",
+				CertKey:   "tls.key",
 			},
 		}
 		return clientTLS

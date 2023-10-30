@@ -52,6 +52,7 @@ import (
 	"github.com/netobserv/network-observability-operator/controllers"
 	"github.com/netobserv/network-observability-operator/controllers/constants"
 	"github.com/netobserv/network-observability-operator/controllers/operator"
+	"github.com/netobserv/network-observability-operator/pkg/narrowcache"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -121,7 +122,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	cfg := ctrl.GetConfigOrDie()
+	narrowCache := narrowcache.NewConfig(cfg, narrowcache.ConfigMaps, narrowcache.Secrets)
+
+	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme,
 		Metrics: server.Options{
 			BindAddress: metricsAddr,
@@ -133,20 +137,21 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "7a7ecdcd.netobserv.io",
-		Client: client.Options{
-			Cache: &client.CacheOptions{
-				DisableFor: []client.Object{&corev1.ConfigMap{}, &corev1.Secret{}},
-			},
-		},
+		Client:                 client.Options{Cache: narrowCache.ControllerRuntimeClientCacheOptions()},
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
+	client, err := narrowCache.CreateClient(mgr.GetClient())
+	if err != nil {
+		setupLog.Error(err, "unable to create narrow cache client")
+		os.Exit(1)
+	}
 
 	ctrl.Log.Info("using eBPF Agent image", "image", config.EBPFAgentImage)
 
-	if err = controllers.NewFlowCollectorReconciler(mgr.GetClient(), mgr.GetScheme(), &config).
+	if err = controllers.NewFlowCollectorReconciler(client, mgr.GetScheme(), &config).
 		SetupWithManager(context.Background(), mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "FlowCollector")
 		os.Exit(1)

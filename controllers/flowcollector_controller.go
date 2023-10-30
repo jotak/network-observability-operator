@@ -246,7 +246,7 @@ func (r *FlowCollectorReconciler) SetupWithManager(ctx context.Context, mgr ctrl
 	if err != nil {
 		return err
 	}
-	r.watcher = watchers.NewWatcher(ctrl, mgr.GetCache())
+	r.watcher = watchers.NewWatcher(ctrl)
 
 	return nil
 }
