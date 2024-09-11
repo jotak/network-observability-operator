@@ -1,6 +1,3 @@
-# We do not use --platform feature to auto fill this ARG because of incompatibility between podman and docker
-ARG TARGETPLATFORM=linux/amd64
-ARG BUILDPLATFORM=linux/amd64
 # Build the manager binary
 FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.22 as builder
 ARG BUILD_VERSION="unknown"
