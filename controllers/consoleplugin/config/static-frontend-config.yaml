@@ -293,6 +293,22 @@ columns:
     default: false
     width: 10
     feature: subnetLabels
+  - id: DstK8S_ServiceName
+    group: Destination
+    name: Service Name
+    tooltip: The destination service name.
+    field: DstK8S_ServiceName
+    filter: dst_service_name
+    default: true
+    width: 15
+  - id: DstK8S_ServiceIP
+    group: Destination
+    name: Service IP
+    tooltip: The destination service IP.
+    field: DstK8S_ServiceIP
+    filter: dst_service_ip
+    default: true
+    width: 15
   - id: K8S_Name
     name: Names
     calculated: getSrcOrDstValue(SrcK8S_Name,DstK8S_Name)
@@ -786,6 +802,21 @@ filters:
           - Starting text like cluster, "cluster-*"
           - Ending text like "*-registry"
           - Pattern like "cluster-*-registry", "c*-*-r*y", -i*e-
+  - id: dst_service_name
+    name: Service Name
+    component: text
+    category: destination
+    placeholder: 'E.g: my-service'
+    hint: Specify a single kubernetes name.
+    examples: |-
+      Specify a single kubernetes name following these rules:
+          - Containing any alphanumeric, hyphen, underscrore or dot character
+          - Partial text like cluster, cluster-image, image-registry
+          - Exact match using quotes like "cluster-image-registry"
+          - Case sensitive match using quotes like "Deployment"
+          - Starting text like cluster, "cluster-*"
+          - Ending text like "*-registry"
+          - Pattern like "cluster-*-registry", "c*-*-r*y", -i*e-
   - id: protocol
     name: Protocol
     component: autocomplete
@@ -987,6 +1018,12 @@ fields:
   - name: DstSubnetLabel
     type: string
     description: Destination subnet label
+  - name: DstK8S_ServiceName
+    type: string
+    description: Destination service name
+  - name: DstK8S_ServiceIP
+    type: string
+    description: Destination service IP
   - name: K8S_FlowLayer
     type: string
     description: "Flow layer: 'app' or 'infra'"
