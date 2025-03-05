@@ -59,7 +59,12 @@ func (b *transfoBuilder) dynamicConfigMap() (*corev1.ConfigMap, error) {
 }
 
 func (b *transfoBuilder) promService() *corev1.Service {
-	return b.generic.promService()
+	return promService(
+		b.generic.desired,
+		b.generic.promServiceName(),
+		b.generic.info.Namespace,
+		b.generic.name(),
+	)
 }
 
 func (b *transfoBuilder) autoScaler() *ascv2.HorizontalPodAutoscaler {

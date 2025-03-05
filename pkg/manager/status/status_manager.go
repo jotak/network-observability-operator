@@ -24,6 +24,7 @@ const (
 	FLPParent           ComponentName = "FLPParent"
 	FLPMonolith         ComponentName = "FLPMonolith"
 	FLPTransformOnly    ComponentName = "FLPTransformOnly"
+	FLPInformersOnly    ComponentName = "FLPInformersOnly"
 	Monitoring          ComponentName = "Monitoring"
 	NetworkPolicy       ComponentName = "NetworkPolicy"
 )

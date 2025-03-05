@@ -60,6 +60,7 @@ const (
 	ControllerBaseImageIndex    = 0
 	EBPFAgentByteCodeImageIndex = 1
 	EnvTestConsole              = "TEST_CONSOLE"
+	EnvSharedInformers          = "SHARED_INFORMERS"
 )
 
 var FlowCollectorName = types.NamespacedName{Name: "cluster"}

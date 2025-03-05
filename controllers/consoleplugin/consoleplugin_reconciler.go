@@ -2,7 +2,6 @@ package consoleplugin
 
 import (
 	"context"
-	"reflect"
 
 	osv1 "github.com/openshift/api/console/v1"
 	operatorsv1 "github.com/openshift/api/operator/v1"
@@ -188,14 +187,8 @@ func (r *CPReconciler) reconcileConfigMap(ctx context.Context, builder *builder)
 	if err != nil {
 		return "", err
 	}
-	if !r.Managed.Exists(r.configMap) {
-		if err := r.CreateOwned(ctx, newCM); err != nil {
-			return "", err
-		}
-	} else if !reflect.DeepEqual(newCM.Data, r.configMap.Data) {
-		if err := r.UpdateIfOwned(ctx, r.configMap, newCM); err != nil {
-			return "", err
-		}
+	if err = reconcilers.ReconcileConfigMapManaged(ctx, r.Instance, r.configMap, newCM); err != nil {
+		return "", err
 	}
 	return configDigest, nil
 }

@@ -69,6 +69,7 @@ func NewKafkaCacheDatasource(kafkaConfig *api.IngestKafka) (Datasource, error) {
 }
 
 func (d *KafkaDS) updateCache(msg *model.KafkaCacheMessage) {
+	// TODO: manage secondary network keys
 	switch msg.Operation {
 	case model.OperationAdd, model.OperationUpdate:
 		d.kafkaIPCacheMut.Lock()

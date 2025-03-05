@@ -6,6 +6,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+func GetRoleBindingName(app string, ref constants.RoleName) string {
+	return string(ref) + "-" + app
+}
+
+func GetClusterRoleBindingName(app string, ref constants.ClusterRoleName) string {
+	return string(ref) + "-" + app
+}
+
 func GetRoleBinding(namespace, app, sa string, ref constants.RoleName) *rbacv1.RoleBinding {
 	return &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{

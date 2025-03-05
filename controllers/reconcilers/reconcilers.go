@@ -110,6 +110,13 @@ func ReconcileConfigMap(ctx context.Context, cl *helper.Client, current, desired
 	return cl.UpdateIfOwned(ctx, current, desired)
 }
 
+func ReconcileConfigMapManaged(ctx context.Context, ci *Instance, old, new *corev1.ConfigMap) error {
+	if !ci.Managed.Exists(old) {
+		old = nil
+	}
+	return ReconcileConfigMap(ctx, &ci.Client, old, new)
+}
+
 func ReconcileDaemonSet(ctx context.Context, ci *Instance, old, new *appsv1.DaemonSet, containerName string, report *helper.ChangeReport) error {
 	if !ci.Managed.Exists(old) {
 		ci.Status.SetCreatingDaemonSet(new)

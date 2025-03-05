@@ -69,22 +69,9 @@ type builder = Builder
 func NewBuilder(info *reconcilers.Instance, desired *flowslatest.FlowCollectorSpec, flowMetrics *metricslatest.FlowMetricList, detectedSubnets []flowslatest.SubnetLabel, ck ConfKind) (Builder, error) {
 	version := helper.ExtractVersion(info.Images[constants.ControllerBaseImageIndex])
 	name := name(ck)
-	var promTLS *flowslatest.CertificateReference
-	switch desired.Processor.Metrics.Server.TLS.Type {
-	case flowslatest.ServerTLSProvided:
-		promTLS = desired.Processor.Metrics.Server.TLS.Provided
-		if promTLS == nil {
-			return builder{}, fmt.Errorf("processor tls configuration set to provided but none is provided")
-		}
-	case flowslatest.ServerTLSAuto:
-		promTLS = &flowslatest.CertificateReference{
-			Type:     "secret",
-			Name:     promServiceName(ck),
-			CertFile: "tls.crt",
-			CertKey:  "tls.key",
-		}
-	case flowslatest.ServerTLSDisabled:
-		// nothing to do there
+	promTLS, err := getPromTLS(desired, promServiceName(ck))
+	if err != nil {
+		return builder{}, err
 	}
 	return builder{
 		info: info,
@@ -129,7 +116,7 @@ func (b *builder) NewGRPCPipeline() PipelineBuilder {
 
 func (b *builder) NewKafkaPipeline() PipelineBuilder {
 	decoder := api.Decoder{Type: "protobuf"}
-	return b.initPipeline(config.NewKafkaPipeline("kafka-read", api.IngestKafka{
+	kafkaConfig := api.IngestKafka{
 		Brokers:           []string{b.desired.Kafka.Address},
 		Topic:             b.desired.Kafka.Topic,
 		GroupID:           b.name(), // Without groupid, each message is delivered to each consumers
@@ -138,13 +125,37 @@ func (b *builder) NewKafkaPipeline() PipelineBuilder {
 		SASL:              getSASL(&b.desired.Kafka.SASL, "kafka-ingest", &b.volumes),
 		PullQueueCapacity: b.desired.Processor.KafkaConsumerQueueCapacity,
 		PullMaxBytes:      b.desired.Processor.KafkaConsumerBatchSize,
-	}))
+	}
+	pb := b.initPipeline(config.NewKafkaPipeline("kafka-read", kafkaConfig))
+	pb.kafkaConfig = &kafkaConfig
+	return pb
 }
 
 func (b *builder) initPipeline(ingest config.PipelineBuilderStage) PipelineBuilder {
 	pipeline := newPipelineBuilder(b.desired, b.flowMetrics, b.detectedSubnets, b.info.Loki, b.info.ClusterInfo.ID, &b.volumes, &ingest)
 	b.pipeline = &pipeline
 	return pipeline
+}
+
+func getPromTLS(desired *flowslatest.FlowCollectorSpec, serviceName string) (*flowslatest.CertificateReference, error) {
+	var promTLS *flowslatest.CertificateReference
+	switch desired.Processor.Metrics.Server.TLS.Type {
+	case flowslatest.ServerTLSProvided:
+		promTLS = desired.Processor.Metrics.Server.TLS.Provided
+		if promTLS == nil {
+			return nil, fmt.Errorf("processor TLS configuration set to provided but none is provided")
+		}
+	case flowslatest.ServerTLSAuto:
+		promTLS = &flowslatest.CertificateReference{
+			Type:     "secret",
+			Name:     serviceName,
+			CertFile: "tls.crt",
+			CertKey:  "tls.key",
+		}
+	case flowslatest.ServerTLSDisabled:
+		// nothing to do there
+	}
+	return promTLS, nil
 }
 
 func (b *builder) podTemplate(hasHostPort, hostNetwork bool, annotations map[string]string) corev1.PodTemplateSpec {
@@ -303,16 +314,16 @@ func (b *builder) DynamicConfigMap() (*corev1.ConfigMap, error) {
 	return &configMap, nil
 }
 
-func (b *builder) GetStaticJSONConfig() (string, error) {
+func metricsSettings(desired *flowslatest.FlowCollectorSpec, vol volumes.Builder, promTLS *flowslatest.CertificateReference) config.MetricsSettings {
 	metricsSettings := config.MetricsSettings{
 		PromConnectionInfo: api.PromConnectionInfo{
-			Port: int(helper.GetFlowCollectorMetricsPort(b.desired)),
+			Port: int(helper.GetFlowCollectorMetricsPort(desired)),
 		},
 		Prefix:  "netobserv_",
 		NoPanic: true,
 	}
-	if b.desired.Processor.Metrics.Server.TLS.Type != flowslatest.ServerTLSDisabled {
-		cert, key := b.volumes.AddCertificate(b.promTLS, "prom-certs")
+	if desired.Processor.Metrics.Server.TLS.Type != flowslatest.ServerTLSDisabled {
+		cert, key := vol.AddCertificate(promTLS, "prom-certs")
 		if cert != "" && key != "" {
 			metricsSettings.TLS = &api.PromTLSConf{
 				CertPath: cert,
@@ -320,6 +331,11 @@ func (b *builder) GetStaticJSONConfig() (string, error) {
 			}
 		}
 	}
+	return metricsSettings
+}
+
+func (b *builder) GetStaticJSONConfig() (string, error) {
+	metricsSettings := metricsSettings(b.desired, b.volumes, b.promTLS)
 	advancedConfig := helper.GetAdvancedProcessorConfig(b.desired.Processor.Advanced)
 	config := map[string]interface{}{
 		"log-level": b.desired.Processor.LogLevel,
@@ -360,16 +376,17 @@ func (b *builder) GetDynamicJSONConfig() (string, error) {
 	return string(bs), nil
 
 }
-func (b *builder) promService() *corev1.Service {
-	port := helper.GetFlowCollectorMetricsPort(b.desired)
+
+func promService(desired *flowslatest.FlowCollectorSpec, svcName, namespace, appLabel string) *corev1.Service {
+	port := helper.GetFlowCollectorMetricsPort(desired)
 	svc := corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      b.promServiceName(),
-			Namespace: b.info.Namespace,
-			Labels:    b.labels,
+			Name:      svcName,
+			Namespace: namespace,
+			Labels:    map[string]string{"app": appLabel},
 		},
 		Spec: corev1.ServiceSpec{
-			Selector: b.selector,
+			Selector: map[string]string{"app": appLabel},
 			Ports: []corev1.ServicePort{{
 				Name:     prometheusServiceName,
 				Port:     port,
@@ -381,9 +398,9 @@ func (b *builder) promService() *corev1.Service {
 			}},
 		},
 	}
-	if b.desired.Processor.Metrics.Server.TLS.Type == flowslatest.ServerTLSAuto {
+	if desired.Processor.Metrics.Server.TLS.Type == flowslatest.ServerTLSAuto {
 		svc.ObjectMeta.Annotations = map[string]string{
-			constants.OpenShiftCertificateAnnotation: b.promServiceName(),
+			constants.OpenShiftCertificateAnnotation: svcName,
 		}
 	}
 	return &svc

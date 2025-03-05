@@ -87,13 +87,13 @@ func (r *transformerReconciler) reconcile(ctx context.Context, desired *flowslat
 	if err != nil {
 		return err
 	}
+
+	// Main, static config map
 	newSCM, configDigest, err := builder.staticConfigMap()
 	if err != nil {
 		return err
 	}
-	annotations := map[string]string{
-		constants.PodConfigurationDigest: configDigest,
-	}
+	annotations := map[string]string{constants.PodConfigurationDigest: configDigest}
 	if !r.Managed.Exists(r.staticConfigMap) {
 		if err := r.CreateOwned(ctx, newSCM); err != nil {
 			return err
@@ -219,8 +219,9 @@ func (r *transformerReconciler) reconcilePermissions(ctx context.Context, builde
 		return r.CreateOwned(ctx, builder.serviceAccount())
 	} // We only configure name, update is not needed for now
 
-	roles := []constants.ClusterRoleName{
-		constants.FLPInformersRole,
+	var roles []constants.ClusterRoleName
+	if !helper.UseSharedInformers(builder.generic.desired) {
+		roles = append(roles, constants.FLPInformersRole)
 	}
 	if helper.UseLoki(builder.generic.desired) && builder.generic.desired.Loki.Mode == flowslatest.LokiModeLokiStack {
 		roles = append(roles, constants.LokiWriterRole)

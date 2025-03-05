@@ -402,3 +402,13 @@ func AutoDetectOpenShiftNetworks(spec *flowslatest.FlowCollectorFLP) bool {
 func HasFLPDeduper(spec *flowslatest.FlowCollectorSpec) bool {
 	return spec.Processor.Deduper != nil && spec.Processor.Deduper.Mode != "" && spec.Processor.Deduper.Mode != flowslatest.FLPDeduperDisabled
 }
+
+func UseSharedInformers(spec *flowslatest.FlowCollectorSpec) bool {
+	if !UseKafka(spec) || spec.Processor.Advanced == nil {
+		return false
+	}
+	env := spec.Processor.Advanced.Env[constants.EnvSharedInformers]
+	// Use ParseBool to allow common variants ("true", "True", "1"...) and ignore non-bools
+	b, err := strconv.ParseBool(env)
+	return err == nil && b
+}

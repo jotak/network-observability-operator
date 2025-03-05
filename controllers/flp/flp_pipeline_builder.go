@@ -10,6 +10,7 @@ import (
 	"github.com/netobserv/flowlogs-pipeline/pkg/config"
 	promConfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
+	"k8s.io/utils/ptr"
 
 	flowslatest "github.com/netobserv/network-observability-operator/apis/flowcollector/v1beta2"
 	metricslatest "github.com/netobserv/network-observability-operator/apis/flowmetrics/v1alpha1"
@@ -35,6 +36,7 @@ type PipelineBuilder struct {
 	volumes         *volumes.Builder
 	loki            *helper.LokiConfig
 	clusterID       string
+	kafkaConfig     *api.IngestKafka
 }
 
 func newPipelineBuilder(
@@ -182,6 +184,14 @@ func (b *PipelineBuilder) AddProcessorStages() error {
 		})
 	}
 
+	var kafkaCache *api.IngestKafka
+	if helper.UseSharedInformers(b.desired) {
+		// Enrichment using Kafka cache
+		kafkaCache = ptr.To(*b.kafkaConfig)
+		kafkaCache.Topic = informersTopic
+		kafkaCache.GroupID = "" // broadcast
+	}
+
 	// enrich stage (transform) configuration
 	nextStage := lastStage.TransformNetwork("enrich", api.TransformNetwork{
 		Rules: rules,
@@ -194,6 +204,7 @@ func (b *PipelineBuilder) AddProcessorStages() error {
 		SubnetLabels: flpLabels,
 		KubeConfig: api.NetworkTransformKubeConfig{
 			SecondaryNetworks: secondaryNetworks,
+			KafkaCacheConfig:  kafkaCache,
 		},
 	})
 

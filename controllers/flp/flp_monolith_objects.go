@@ -57,7 +57,12 @@ func (b *monolithBuilder) dynamicConfigMap() (*corev1.ConfigMap, error) {
 }
 
 func (b *monolithBuilder) promService() *corev1.Service {
-	return b.generic.promService()
+	return promService(
+		b.generic.desired,
+		b.generic.promServiceName(),
+		b.generic.info.Namespace,
+		b.generic.name(),
+	)
 }
 
 func (b *monolithBuilder) serviceAccount() *corev1.ServiceAccount {
