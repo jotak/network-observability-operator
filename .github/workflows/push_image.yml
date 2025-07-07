@@ -29,7 +29,8 @@ jobs:
       run: |
         git config --global user.email "jtakvori@redhat.com"
         git config --global user.name "jotak"
-        git add network-observability-operator/helm/values.yaml
+        git add helm/values.yaml
         git commit -m "Updated image version in values.yaml"
+        git remote -v
         git log
         git push origin HEAD:test
