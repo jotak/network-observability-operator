@@ -15,7 +15,6 @@ jobs:
   update-newtag-in-helm-chart:
     name: update image version in helm
     runs-on: ubuntu-latest
-    needs: push-image
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
