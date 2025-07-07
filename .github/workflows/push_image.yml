@@ -23,7 +23,7 @@ jobs:
 
     - name: Update image version in deployment file
       run: |
-        sed -i '/netobserv:/,/^[^ ]/s/version: .*/version: "${{ env.WF_VERSION }}"/' network-observability-operator/helm/values.yaml
+        sed -i '/netobserv:/,/^[^ ]/s/version: .*/version: "${{ env.WF_VERSION }}"/' helm/values.yaml
 
     - name: Commit and push changes
       run: |
