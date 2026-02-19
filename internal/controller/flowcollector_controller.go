@@ -20,11 +20,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	flowslatest "github.com/netobserv/network-observability-operator/api/flowcollector/v1beta2"
-	"github.com/netobserv/network-observability-operator/internal/controller/consoleplugin"
 	"github.com/netobserv/network-observability-operator/internal/controller/constants"
 	"github.com/netobserv/network-observability-operator/internal/controller/ebpf"
 	"github.com/netobserv/network-observability-operator/internal/controller/loki"
 	"github.com/netobserv/network-observability-operator/internal/controller/reconcilers"
+	"github.com/netobserv/network-observability-operator/internal/controller/webconsole"
 	"github.com/netobserv/network-observability-operator/internal/pkg/cleanup"
 	"github.com/netobserv/network-observability-operator/internal/pkg/helper"
 	"github.com/netobserv/network-observability-operator/internal/pkg/manager"
@@ -188,9 +188,9 @@ func (r *FlowCollectorReconciler) reconcile(ctx context.Context, clh *helper.Cli
 	r.watcher.Reset(ns)
 
 	// Create reconcilers
-	cpReconciler := consoleplugin.NewReconciler(reconcilersInfo.NewInstance(
+	cpReconciler := webconsole.NewReconciler(reconcilersInfo.NewInstance(
 		map[reconcilers.ImageRef]string{
-			reconcilers.MainImage:                r.mgr.Config.ConsolePluginImage,
+			reconcilers.MainImage:                r.mgr.Config.WebConsoleImage,
 			reconcilers.ConsolePluginCompatImage: r.mgr.Config.ConsolePluginCompatImage,
 		},
 		r.status,

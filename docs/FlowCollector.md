@@ -104,7 +104,7 @@ for these features as a best effort only.
         <td><b><a href="#flowcollectorspecconsoleplugin">consolePlugin</a></b></td>
         <td>object</td>
         <td>
-          `consolePlugin` defines the settings related to the OpenShift Console plugin, when available.<br/>
+          `consolePlugin` defines the settings related to the Web Console.<br/>
         </td>
         <td>false</td>
       </tr><tr>
@@ -2983,7 +2983,7 @@ refer to `forceSampleAll`. Alternatively, you can use the eBPF Agent instead of 
 
 
 
-`consolePlugin` defines the settings related to the OpenShift Console plugin, when available.
+`consolePlugin` defines the settings related to the Web Console.
 
 <table>
     <thead>
@@ -3015,7 +3015,7 @@ Deprecation notice: managed autoscaler will be removed in a future version. You 
         <td><b>enable</b></td>
         <td>boolean</td>
         <td>
-          Enables the console plugin deployment.<br/>
+          Enables the web console deployment.<br/>
           <br/>
             <i>Default</i>: true<br/>
         </td>

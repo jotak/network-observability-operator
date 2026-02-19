@@ -1,4 +1,4 @@
-package consoleplugin
+package webconsole
 
 import (
 	"context"
@@ -23,9 +23,9 @@ import (
 
 	"github.com/netobserv/flowlogs-pipeline/pkg/api"
 	flowslatest "github.com/netobserv/network-observability-operator/api/flowcollector/v1beta2"
-	cfg "github.com/netobserv/network-observability-operator/internal/controller/consoleplugin/config"
 	"github.com/netobserv/network-observability-operator/internal/controller/constants"
 	"github.com/netobserv/network-observability-operator/internal/controller/reconcilers"
+	cfg "github.com/netobserv/network-observability-operator/internal/controller/webconsole/config"
 	"github.com/netobserv/network-observability-operator/internal/pkg/helper"
 	"github.com/netobserv/network-observability-operator/internal/pkg/helper/loki"
 	"github.com/netobserv/network-observability-operator/internal/pkg/metrics"
@@ -44,16 +44,17 @@ const metricsPort = 9002
 const metricsPortName = "metrics"
 
 type builder struct {
-	info     *reconcilers.Instance
-	imageRef reconcilers.ImageRef
-	labels   map[string]string
-	selector map[string]string
-	desired  *flowslatest.FlowCollectorSpec
-	advanced *flowslatest.AdvancedPluginConfig
-	volumes  volumes.Builder
+	info      *reconcilers.Instance
+	imageRef  reconcilers.ImageRef
+	labels    map[string]string
+	selector  map[string]string
+	desired   *flowslatest.FlowCollectorSpec
+	advanced  *flowslatest.AdvancedPluginConfig
+	volumes   volumes.Builder
+	usePlugin bool
 }
 
-func newBuilder(info *reconcilers.Instance, desired *flowslatest.FlowCollectorSpec, name string) builder {
+func newBuilder(info *reconcilers.Instance, desired *flowslatest.FlowCollectorSpec, name string, usePlugin bool) builder {
 	imageToUse := reconcilers.MainImage
 	needsPF4, _, err := info.ClusterInfo.IsOpenShiftVersionLessThan("4.15.0")
 	if err == nil && needsPF4 {
@@ -61,7 +62,7 @@ func newBuilder(info *reconcilers.Instance, desired *flowslatest.FlowCollectorSp
 	}
 
 	version := helper.ExtractVersion(info.Images[imageToUse])
-	advanced := helper.GetAdvancedPluginConfig(desired.ConsolePlugin.Advanced)
+	advanced := helper.GetAdvancedPluginConfig(desired.WebConsole.Advanced)
 	return builder{
 		info:     info,
 		imageRef: imageToUse,
@@ -73,8 +74,9 @@ func newBuilder(info *reconcilers.Instance, desired *flowslatest.FlowCollectorSp
 		selector: map[string]string{
 			"app": name,
 		},
-		desired:  desired,
-		advanced: &advanced,
+		desired:   desired,
+		advanced:  &advanced,
+		usePlugin: usePlugin,
 	}
 }
 
@@ -177,7 +179,7 @@ func (b *builder) deployment(name, cmDigest string) *appsv1.Deployment {
 			Labels:    b.labels,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: b.desired.ConsolePlugin.Replicas,
+			Replicas: b.desired.WebConsole.Replicas,
 			Selector: &metav1.LabelSelector{
 				MatchLabels: b.selector,
 			},
@@ -190,7 +192,7 @@ func (b *builder) podTemplate(name, cmDigest string) *corev1.PodTemplateSpec {
 	var sa string
 	annotations := map[string]string{}
 	args := []string{
-		"-loglevel", b.desired.ConsolePlugin.LogLevel,
+		"-loglevel", b.desired.WebConsole.LogLevel,
 	}
 	volumes := []corev1.Volume{}
 	volumeMounts := []corev1.VolumeMount{}
@@ -219,21 +221,19 @@ func (b *builder) podTemplate(name, cmDigest string) *corev1.PodTemplateSpec {
 		})
 	}
 
-	if !b.desired.ConsolePlugin.Standalone {
-		volumes = append(volumes, corev1.Volume{
-			Name: fmt.Sprintf("%s-cert", name),
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName: fmt.Sprintf("%s-cert", name),
-				},
+	volumes = append(volumes, corev1.Volume{
+		Name: fmt.Sprintf("%s-cert", name),
+		VolumeSource: corev1.VolumeSource{
+			Secret: &corev1.SecretVolumeSource{
+				SecretName: fmt.Sprintf("%s-cert", name),
 			},
-		})
-		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      fmt.Sprintf("%s-cert", name),
-			MountPath: "/var/serving-cert",
-			ReadOnly:  true,
-		})
-	}
+		},
+	})
+	volumeMounts = append(volumeMounts, corev1.VolumeMount{
+		Name:      fmt.Sprintf("%s-cert", name),
+		MountPath: "/var/serving-cert",
+		ReadOnly:  true,
+	})
 
 	return &corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
@@ -244,8 +244,8 @@ func (b *builder) podTemplate(name, cmDigest string) *corev1.PodTemplateSpec {
 			Containers: []corev1.Container{{
 				Name:            name,
 				Image:           b.info.Images[b.imageRef],
-				ImagePullPolicy: corev1.PullPolicy(b.desired.ConsolePlugin.ImagePullPolicy),
-				Resources:       *b.desired.ConsolePlugin.Resources.DeepCopy(),
+				ImagePullPolicy: corev1.PullPolicy(b.desired.WebConsole.ImagePullPolicy),
+				Resources:       *b.desired.WebConsole.Resources.DeepCopy(),
 				VolumeMounts:    b.volumes.AppendMounts(volumeMounts),
 				Env:             []corev1.EnvVar{constants.EnvNoHTTP2},
 				Args:            args,
@@ -274,9 +274,9 @@ func (b *builder) autoScaler() *ascv2.HorizontalPodAutoscaler {
 				Kind:       "Deployment",
 				Name:       constants.PluginName,
 			},
-			MinReplicas: b.desired.ConsolePlugin.Autoscaler.MinReplicas,
-			MaxReplicas: b.desired.ConsolePlugin.Autoscaler.MaxReplicas,
-			Metrics:     b.desired.ConsolePlugin.Autoscaler.Metrics,
+			MinReplicas: b.desired.WebConsole.Autoscaler.MinReplicas,
+			MaxReplicas: b.desired.WebConsole.Autoscaler.MaxReplicas,
+			Metrics:     b.desired.WebConsole.Autoscaler.Metrics,
 		},
 	}
 }
@@ -487,8 +487,8 @@ func (b *builder) setFrontendConfig(fconf *cfg.FrontendConfig) error {
 	}
 
 	fconf.RecordTypes = helper.GetRecordTypes(&b.desired.Processor)
-	fconf.PortNaming = b.desired.ConsolePlugin.PortNaming
-	fconf.QuickFilters = b.desired.ConsolePlugin.QuickFilters
+	fconf.PortNaming = b.desired.WebConsole.PortNaming
+	fconf.QuickFilters = b.desired.WebConsole.QuickFilters
 	fconf.AlertNamespaces = []string{b.info.Namespace}
 	fconf.Sampling = b.desired.GetSampling()
 	if b.desired.Processor.IsMultiClusterEnabled() {
@@ -542,14 +542,13 @@ func getLokiStatus(lokiStack *lokiv1.LokiStack) string {
 func (b *builder) configMap(ctx context.Context, lokiStack *lokiv1.LokiStack) (*corev1.ConfigMap, string, error) {
 	config := cfg.PluginConfig{
 		Server: cfg.ServerConfig{
-			Port: int(*b.advanced.Port),
+			Port:     int(*b.advanced.Port),
+			CertPath: "/var/serving-cert/tls.crt",
+			KeyPath:  "/var/serving-cert/tls.key",
 		},
 	}
-	if b.desired.ConsolePlugin.Standalone {
+	if !b.usePlugin {
 		config.Server.AuthCheck = "none"
-	} else {
-		config.Server.CertPath = "/var/serving-cert/tls.crt"
-		config.Server.KeyPath = "/var/serving-cert/tls.key"
 	}
 
 	// configure loki

@@ -133,7 +133,7 @@ func flowCollectorIsoSpecs() {
 					},
 				},
 			},
-			ConsolePlugin: flowslatest.FlowCollectorConsolePlugin{
+			WebConsole: flowslatest.FlowCollectorWebConsole{
 				Enable:          ptr.To(true),
 				Replicas:        &zero,
 				ImagePullPolicy: "Always",
@@ -241,7 +241,7 @@ func flowCollectorIsoSpecs() {
 			// For easier debugging, we check CR parts one by one
 			Expect(cr.Spec.Processor).Should(Equal(specInput.Processor))
 			Expect(cr.Spec.Agent).Should(Equal(specInput.Agent))
-			Expect(cr.Spec.ConsolePlugin).Should(Equal(specInput.ConsolePlugin))
+			Expect(cr.Spec.WebConsole).Should(Equal(specInput.WebConsole))
 			Expect(cr.Spec.Loki).Should(Equal(specInput.Loki))
 			Expect(cr.Spec.Kafka).Should(Equal(specInput.Kafka))
 			Expect(cr.Spec.Exporters).Should(Equal(specInput.Exporters))

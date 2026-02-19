@@ -1583,7 +1583,7 @@ spec:
                       type: string
                   type: object
                 consolePlugin:
-                  description: '`consolePlugin` defines the settings related to the OpenShift Console plugin, when available.'
+                  description: '`consolePlugin` defines the settings related to the Web Console.'
                   properties:
                     advanced:
                       description: |-
@@ -2857,7 +2857,7 @@ spec:
                       type: object
                     enable:
                       default: true
-                      description: Enables the console plugin deployment.
+                      description: Enables the web console deployment.
                       type: boolean
                     imagePullPolicy:
                       default: IfNotPresent

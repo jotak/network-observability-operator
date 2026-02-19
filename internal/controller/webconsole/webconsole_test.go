@@ -1,4 +1,4 @@
-package consoleplugin
+package webconsole
 
 import (
 	"context"
@@ -15,9 +15,9 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/netobserv/flowlogs-pipeline/pkg/api"
 	flowslatest "github.com/netobserv/network-observability-operator/api/flowcollector/v1beta2"
-	config "github.com/netobserv/network-observability-operator/internal/controller/consoleplugin/config"
 	"github.com/netobserv/network-observability-operator/internal/controller/constants"
 	"github.com/netobserv/network-observability-operator/internal/controller/reconcilers"
+	config "github.com/netobserv/network-observability-operator/internal/controller/webconsole/config"
 	"github.com/netobserv/network-observability-operator/internal/pkg/cluster"
 	"github.com/netobserv/network-observability-operator/internal/pkg/helper"
 	"github.com/netobserv/network-observability-operator/internal/pkg/manager/status"
@@ -34,8 +34,8 @@ var testResources = corev1.ResourceRequirements{
 	},
 }
 
-func getPluginConfig() flowslatest.FlowCollectorConsolePlugin {
-	return flowslatest.FlowCollectorConsolePlugin{
+func getPluginConfig() flowslatest.FlowCollectorWebConsole {
+	return flowslatest.FlowCollectorWebConsole{
 		Enable:          ptr.To(true),
 		ImagePullPolicy: string(testPullPolicy),
 		Resources:       testResources,
@@ -80,7 +80,7 @@ var minReplicas = int32(1)
 var maxReplicas = int32(5)
 var targetCPU = int32(75)
 
-func getAutoScalerSpecs() (ascv2.HorizontalPodAutoscaler, flowslatest.FlowCollectorConsolePlugin) {
+func getAutoScalerSpecs() (ascv2.HorizontalPodAutoscaler, flowslatest.FlowCollectorWebConsole) {
 	var autoScaler = ascv2.HorizontalPodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: testNamespace,
@@ -110,7 +110,7 @@ func getAutoScalerSpecs() (ascv2.HorizontalPodAutoscaler, flowslatest.FlowCollec
 
 func getBuilder(spec *flowslatest.FlowCollectorSpec, lk *helper.LokiConfig) builder {
 	info := reconcilers.Common{Namespace: testNamespace, Loki: lk, ClusterInfo: &cluster.Info{}}
-	b := newBuilder(info.NewInstance(map[reconcilers.ImageRef]string{reconcilers.MainImage: testImage}, status.Instance{}), spec, constants.PluginName)
+	b := newBuilder(info.NewInstance(map[reconcilers.ImageRef]string{reconcilers.MainImage: testImage}, status.Instance{}), spec, constants.PluginName, true)
 	_, _, _ = b.configMap(context.Background(), nil) // build configmap to update builder's volumes
 	return b
 }
@@ -123,7 +123,7 @@ func TestContainerUpdateCheck(t *testing.T) {
 	loki := helper.LokiConfig{
 		LokiManualParams: flowslatest.LokiManualParams{IngesterURL: "http://loki:3100/", TenantID: "netobserv"},
 	}
-	spec := flowslatest.FlowCollectorSpec{ConsolePlugin: plugin}
+	spec := flowslatest.FlowCollectorSpec{WebConsole: plugin}
 	builder := getBuilder(&spec, &loki)
 	old := builder.deployment(constants.PluginName, "digest")
 	nEw := builder.deployment(constants.PluginName, "digest")
@@ -132,7 +132,7 @@ func TestContainerUpdateCheck(t *testing.T) {
 	assert.Contains(report.String(), "no change")
 
 	// wrong resources
-	spec.ConsolePlugin.Resources.Limits = map[corev1.ResourceName]resource.Quantity{
+	spec.WebConsole.Resources.Limits = map[corev1.ResourceName]resource.Quantity{
 		corev1.ResourceCPU:    resource.MustParse("500m"),
 		corev1.ResourceMemory: resource.MustParse("500Gi"),
 	}
@@ -151,7 +151,7 @@ func TestContainerUpdateCheck(t *testing.T) {
 	old = nEw
 
 	// new pull policy
-	spec.ConsolePlugin.ImagePullPolicy = string(corev1.PullAlways)
+	spec.WebConsole.ImagePullPolicy = string(corev1.PullAlways)
 	nEw = builder.deployment(constants.PluginName, "digest")
 	report = helper.NewChangeReport("")
 	assert.True(helper.PodChanged(&old.Spec.Template, &nEw.Spec.Template, constants.PluginName, &report))
@@ -159,7 +159,7 @@ func TestContainerUpdateCheck(t *testing.T) {
 	old = nEw
 
 	// new log level
-	spec.ConsolePlugin.LogLevel = "debug"
+	spec.WebConsole.LogLevel = "debug"
 	nEw = builder.deployment(constants.PluginName, "digest")
 	report = helper.NewChangeReport("")
 	assert.True(helper.PodChanged(&old.Spec.Template, &nEw.Spec.Template, constants.PluginName, &report))
@@ -193,7 +193,7 @@ func TestContainerUpdateCheck(t *testing.T) {
 	old = nEw
 
 	// new toleration
-	spec.ConsolePlugin.Advanced = &flowslatest.AdvancedPluginConfig{
+	spec.WebConsole.Advanced = &flowslatest.AdvancedPluginConfig{
 		Scheduling: &flowslatest.SchedulingConfig{
 			Tolerations: []corev1.Toleration{{Key: "dummy-key", Operator: corev1.TolerationOpExists}},
 		},
@@ -222,7 +222,7 @@ func TestConfigMapUpdateCheck(t *testing.T) {
 	loki := helper.LokiConfig{
 		LokiManualParams: flowslatest.LokiManualParams{IngesterURL: "http://loki:3100/", TenantID: "netobserv"},
 	}
-	spec := flowslatest.FlowCollectorSpec{ConsolePlugin: plugin}
+	spec := flowslatest.FlowCollectorSpec{WebConsole: plugin}
 	builder := getBuilder(&spec, &loki)
 	old, _, _ := builder.configMap(context.Background(), nil)
 	nEw, _, _ := builder.configMap(context.Background(), nil)
@@ -280,7 +280,7 @@ func TestConfigMapUpdateWithLokistackMode(t *testing.T) {
 		LokiStack: flowslatest.LokiStackRef{Name: "lokistack", Namespace: "ls-namespace"},
 	}
 	loki := helper.NewLokiConfig(&lokiSpec, "any")
-	spec := flowslatest.FlowCollectorSpec{ConsolePlugin: plugin, Loki: lokiSpec}
+	spec := flowslatest.FlowCollectorSpec{WebConsole: plugin, Loki: lokiSpec}
 	builder := getBuilder(&spec, &loki)
 	old, _, _ := builder.configMap(context.Background(), nil)
 	nEw, _, _ := builder.configMap(context.Background(), nil)
@@ -290,7 +290,7 @@ func TestConfigMapUpdateWithLokistackMode(t *testing.T) {
 	lokiSpec.LokiStack.Name = "lokistack-updated"
 	loki = helper.NewLokiConfig(&lokiSpec, "any")
 
-	spec = flowslatest.FlowCollectorSpec{ConsolePlugin: plugin, Loki: lokiSpec}
+	spec = flowslatest.FlowCollectorSpec{WebConsole: plugin, Loki: lokiSpec}
 	builder = getBuilder(&spec, &loki)
 	nEw, _, _ = builder.configMap(context.Background(), nil)
 	assert.NotEqual(old.Data, nEw.Data)
@@ -300,7 +300,7 @@ func TestConfigMapUpdateWithLokistackMode(t *testing.T) {
 	lokiSpec.LokiStack.Namespace = "ls-namespace-updated"
 	loki = helper.NewLokiConfig(&lokiSpec, "any")
 
-	spec = flowslatest.FlowCollectorSpec{ConsolePlugin: plugin, Loki: lokiSpec}
+	spec = flowslatest.FlowCollectorSpec{WebConsole: plugin, Loki: lokiSpec}
 	builder = getBuilder(&spec, &loki)
 	nEw, _, _ = builder.configMap(context.Background(), nil)
 	assert.NotEqual(old.Data, nEw.Data)
@@ -321,10 +321,10 @@ func TestConfigMapContent(t *testing.T) {
 	}
 	loki := helper.NewLokiConfig(&lokiSpec, "any")
 	spec := flowslatest.FlowCollectorSpec{
-		Agent:         agentSpec,
-		ConsolePlugin: getPluginConfig(),
-		Loki:          lokiSpec,
-		Processor:     flowslatest.FlowCollectorFLP{SubnetLabels: flowslatest.SubnetLabels{OpenShiftAutoDetect: ptr.To(false)}},
+		Agent:      agentSpec,
+		WebConsole: getPluginConfig(),
+		Loki:       lokiSpec,
+		Processor:  flowslatest.FlowCollectorFLP{SubnetLabels: flowslatest.SubnetLabels{OpenShiftAutoDetect: ptr.To(false)}},
 	}
 	builder := getBuilder(&spec, &loki)
 	cm, _, err := builder.configMap(context.Background(), nil)
@@ -380,7 +380,7 @@ func TestBuiltService(t *testing.T) {
 	// newly created service should not need update
 	plugin := getPluginConfig()
 	loki := helper.LokiConfig{LokiManualParams: flowslatest.LokiManualParams{IngesterURL: "http://foo:1234"}}
-	spec := flowslatest.FlowCollectorSpec{ConsolePlugin: plugin}
+	spec := flowslatest.FlowCollectorSpec{WebConsole: plugin}
 	builder := getBuilder(&spec, &loki)
 	old := builder.mainService(constants.PluginName)
 	nEw := builder.mainService(constants.PluginName)
@@ -394,7 +394,7 @@ func TestLabels(t *testing.T) {
 
 	plugin := getPluginConfig()
 	loki := helper.LokiConfig{LokiManualParams: flowslatest.LokiManualParams{IngesterURL: "http://foo:1234"}}
-	spec := flowslatest.FlowCollectorSpec{ConsolePlugin: plugin}
+	spec := flowslatest.FlowCollectorSpec{WebConsole: plugin}
 	builder := getBuilder(&spec, &loki)
 
 	// Deployment
@@ -486,7 +486,7 @@ func TestLokiStackStatusEmbedding(t *testing.T) {
 		LokiStack: flowslatest.LokiStackRef{Name: "lokistack", Namespace: "ls-namespace"},
 	}
 	loki := helper.NewLokiConfig(&lokiSpec, "any")
-	spec := flowslatest.FlowCollectorSpec{ConsolePlugin: plugin, Loki: lokiSpec}
+	spec := flowslatest.FlowCollectorSpec{WebConsole: plugin, Loki: lokiSpec}
 	builder := getBuilder(&spec, &loki)
 
 	// Test 1: LokiStack with ready status
@@ -684,7 +684,7 @@ func TestLokiStackNotFoundBehavior(t *testing.T) {
 		LokiStack: flowslatest.LokiStackRef{Name: "missing-lokistack", Namespace: "test-namespace"},
 	}
 	loki := helper.NewLokiConfig(&lokiSpec, "any")
-	spec := flowslatest.FlowCollectorSpec{ConsolePlugin: plugin, Loki: lokiSpec}
+	spec := flowslatest.FlowCollectorSpec{WebConsole: plugin, Loki: lokiSpec}
 	builder := getBuilder(&spec, &loki)
 
 	// Test behavior when LokiStack is not found (nil is passed)

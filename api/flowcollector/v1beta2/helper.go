@@ -51,10 +51,19 @@ func (spec *FlowCollectorSpec) UsePrometheus() bool {
 	return spec.Prometheus.Querier.Enable == nil || *spec.Prometheus.Querier.Enable
 }
 
-func (spec *FlowCollectorSpec) UseConsolePlugin() bool {
+func (spec *FlowCollectorSpec) UseWebConsole() bool {
 	return (spec.UseLoki() || spec.UsePrometheus()) &&
 		// nil should fallback to default value, which is "true"
-		(spec.ConsolePlugin.Enable == nil || *spec.ConsolePlugin.Enable)
+		(spec.WebConsole.Enable == nil || *spec.WebConsole.Enable)
+}
+
+func (spec *FlowCollectorWebConsole) UseAsPlugin(hasPluginAPI bool) bool {
+	if hasPluginAPI {
+		// Default true
+		return spec.Standalone == nil || !*spec.Standalone
+	}
+	// Default false
+	return spec.Standalone != nil && !*spec.Standalone
 }
 
 func (spec *FlowCollectorSpec) UseHostNetwork() bool {
@@ -205,7 +214,7 @@ func (spec *FlowCollectorFLP) IsUnmanagedFLPReplicas() bool {
 	return spec.KafkaConsumerAutoscaler.IsHPAEnabled()
 }
 
-func (spec *FlowCollectorConsolePlugin) IsUnmanagedConsolePluginReplicas() bool {
+func (spec *FlowCollectorWebConsole) IsUnmanagedConsolePluginReplicas() bool {
 	if spec.UnmanagedReplicas {
 		return true
 	}

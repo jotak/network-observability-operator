@@ -66,8 +66,8 @@ type FlowCollectorSpec struct {
 	// `prometheus` defines Prometheus settings, such as querier configuration used to fetch metrics from the Console plugin.
 	Prometheus FlowCollectorPrometheus `json:"prometheus,omitempty"`
 
-	// `consolePlugin` defines the settings related to the OpenShift Console plugin, when available.
-	ConsolePlugin FlowCollectorConsolePlugin `json:"consolePlugin,omitempty"`
+	// `consolePlugin` defines the settings related to the Web Console.
+	WebConsole FlowCollectorWebConsole `json:"consolePlugin,omitempty"`
 
 	// `deploymentModel` defines the desired type of deployment for flow processing. Possible values are:<br>
 	// - `Service` (default) to make the flow processor listen as a Kubernetes Service, backed by a scalable Deployment.<br>
@@ -1105,16 +1105,16 @@ type PrometheusQuerier struct {
 	Timeout *metav1.Duration `json:"timeout,omitempty"` // Warning: keep as pointer, else default is ignored
 }
 
-// FlowCollectorConsolePlugin defines the desired ConsolePlugin state of FlowCollector.
-type FlowCollectorConsolePlugin struct {
+// FlowCollectorWebConsole defines the desired state of the Web Console.
+type FlowCollectorWebConsole struct {
 	//+kubebuilder:default:=true
-	// Enables the console plugin deployment.
+	// Enables the web console deployment.
 	Enable *bool `json:"enable,omitempty"`
 
 	// Deploy as a standalone console, instead of a plugin of the OpenShift Console.
 	// This is not recommended when using with OpenShift, as it doesn't provide an integrated experience.
 	// [Unsupported (*)].
-	Standalone bool `json:"standalone,omitempty"`
+	Standalone *bool `json:"standalone,omitempty"`
 
 	//+kubebuilder:validation:Minimum=0
 	//+kubebuilder:default:=1

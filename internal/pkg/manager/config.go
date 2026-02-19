@@ -12,11 +12,11 @@ type Config struct {
 	EBPFAgentImage string
 	// FlowlogsPipelineImage is the image of the Flowlogs-Pipeline that is managed by the operator
 	FlowlogsPipelineImage string
-	// ConsolePluginImage is the image of the Console Plugin that is managed by the operator
-	ConsolePluginImage string
+	// WebConsoleImage is the image of the Web Console that is managed by the operator
+	WebConsoleImage string
 	// ConsolePluginCompatImage is a backward compatible image of the Console Plugin that is managed by the operator (e.g. a Patterfly 4 variant)
 	ConsolePluginCompatImage string
-	// EBPFByteCodeImage is the ebpf byte code image used by EBPF Manager
+	// EBPFByteCodeImage is the ebpf byte code image used by bpfman
 	EBPFByteCodeImage string
 	// Default namespace
 	Namespace string
@@ -31,8 +31,8 @@ func (cfg *Config) Validate() error {
 	if cfg.FlowlogsPipelineImage == "" {
 		return errors.New("flowlogs-pipeline image argument can't be empty")
 	}
-	if cfg.ConsolePluginImage == "" {
-		return errors.New("console plugin image argument can't be empty")
+	if cfg.WebConsoleImage == "" {
+		return errors.New("web console image argument can't be empty")
 	}
 	if cfg.Namespace == "" {
 		return errors.New("namespace argument can't be empty")

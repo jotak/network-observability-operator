@@ -121,8 +121,8 @@ func buildMainNetworkPolicy(desired *flowslatest.FlowCollector, mgr *manager.Man
 			allowedNamespacesIn = append(allowedNamespacesIn, constants.UWMonitoringNamespace)
 		}
 
-		if desired.Spec.UseConsolePlugin() && mgr.ClusterInfo.HasConsolePlugin() {
-			advanced := helper.GetAdvancedPluginConfig(desired.Spec.ConsolePlugin.Advanced)
+		if desired.Spec.UseWebConsole() && mgr.ClusterInfo.HasConsolePlugin() {
+			advanced := helper.GetAdvancedPluginConfig(desired.Spec.WebConsole.Advanced)
 			np.Spec.Ingress = append(np.Spec.Ingress, networkingv1.NetworkPolicyIngressRule{
 				From: []networkingv1.NetworkPolicyPeer{
 					peerInNamespace(constants.ConsoleNamespace),

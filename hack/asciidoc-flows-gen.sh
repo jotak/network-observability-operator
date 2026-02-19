@@ -1,7 +1,7 @@
 #!/bin/sh
 
 ADOC=docs/flows-format.adoc
-FE_SOURCE=internal/controller/consoleplugin/config/static-frontend-config.yaml
+FE_SOURCE=internal/controller/webconsole/config/static-frontend-config.yaml
 LOKI_LABEL_SOURCE=internal/pkg/helper/loki/loki-labels.json
 CARDINALITY_SOURCE=internal/pkg/helper/cardinality/cardinality.json
 OTEL_SOURCE=internal/pkg/helper/otel/otel-config.json

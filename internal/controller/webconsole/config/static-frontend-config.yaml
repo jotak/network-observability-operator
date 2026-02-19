@@ -1,7 +1,7 @@
 # these configurations are static and append to the console plugin configmap
 # other fields such as recordTypes, quickFilters, alertNamespaces, sampling, features
 # are taken from the CR
-# see consoleplugin_objects.go -> configMap func
+# see webconsole_objects.go -> configMap func
 columns:
   - id: StartTime
     name: Start Time

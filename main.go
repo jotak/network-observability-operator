@@ -112,7 +112,7 @@ func main() {
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.StringVar(&config.EBPFAgentImage, "ebpf-agent-image", "quay.io/netobserv/netobserv-ebpf-agent:main", "The image of the eBPF agent")
 	flag.StringVar(&config.FlowlogsPipelineImage, "flowlogs-pipeline-image", "quay.io/netobserv/flowlogs-pipeline:main", "The image of Flowlogs Pipeline")
-	flag.StringVar(&config.ConsolePluginImage, "console-plugin-image", "quay.io/netobserv/network-observability-console-plugin:main", "The image of the Console Plugin")
+	flag.StringVar(&config.WebConsoleImage, "web-console-image", "quay.io/netobserv/network-observability-console-plugin:main", "The image of the Web Console (standalone or plugin)")
 	flag.StringVar(&config.ConsolePluginCompatImage, "console-plugin-compat-image", "quay.io/netobserv/network-observability-console-plugin-pf4:main", "A backward compatible image of the Console Plugin (e.g. Patterfly 4 variant)")
 	flag.StringVar(&config.EBPFByteCodeImage, "ebpf-bytecode-image", "quay.io/netobserv/ebpf-bytecode:main", "The EBPF bytecode for the eBPF agent")
 	flag.StringVar(&config.Namespace, "namespace", "netobserv", "Current controller namespace")

@@ -17,7 +17,7 @@ The components are:
   - It derives all flows into metric counters, for Prometheus.
   - Raw flows can be exported to Loki and/or custom exporters (Kafka, IPFIX, OpenTelemetry).
   - As a standalone, FLP is very flexible and configurable. It supports more inputs and outputs, allows more arbitrary filters, sampling, aggregations, relabelling, etc. When deployed via the operator, only a subset of its capacities is used.
-- When used in OpenShift, [a Console plugin](https://github.com/netobserv/network-observability-console-plugin) for flows visualization with powerful filtering options, a topology representation and more (outside of OpenShift, [it can be deployed as a standalone](https://github.com/netobserv/network-observability-operator/blob/main/FAQ.md#how-do-i-visualize-flows-and-metrics)).
+- [A web console](https://github.com/netobserv/network-observability-console-plugin) for flows visualization with powerful filtering options, a topology representation and more.
   - It provides a polished web UI to visualize and explore the flow logs and metrics stored in Loki and/or Prometheus.
   - Different views include metrics overview, a network topology and a table listing raw flows logs.
   - It supports multi-tenant access, making it relevant for various use cases: cluster/network admins, SREs, development teams...

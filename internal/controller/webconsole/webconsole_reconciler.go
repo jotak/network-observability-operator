@@ -1,4 +1,4 @@
-package consoleplugin
+package webconsole
 
 import (
 	"context"
@@ -23,7 +23,7 @@ import (
 )
 
 // Type alias
-type pluginSpec = flowslatest.FlowCollectorConsolePlugin
+type pluginSpec = flowslatest.FlowCollectorWebConsole
 
 // CPReconciler reconciles the current console plugin state with the desired configuration
 type CPReconciler struct {
@@ -55,7 +55,7 @@ func NewReconciler(cmn *reconcilers.Instance) CPReconciler {
 
 // Reconcile is the reconciler entry point to reconcile the current plugin state with the desired configuration
 func (r *CPReconciler) Reconcile(ctx context.Context, desired *flowslatest.FlowCollector) error {
-	l := log.FromContext(ctx).WithName("console-plugin")
+	l := log.FromContext(ctx).WithName("web-console")
 	ctx = log.IntoContext(ctx, l)
 
 	// Retrieve current owned objects
@@ -64,21 +64,24 @@ func (r *CPReconciler) Reconcile(ctx context.Context, desired *flowslatest.FlowC
 		return err
 	}
 
-	if r.ClusterInfo.HasConsolePlugin() {
+	hasPluginAPI := r.ClusterInfo.HasConsolePlugin()
+	usePlugin := desired.Spec.WebConsole.UseAsPlugin(hasPluginAPI)
+
+	if usePlugin {
 		if err = r.checkAutoPatch(ctx, desired, constants.PluginName); err != nil {
 			return err
 		}
 	}
 
-	if desired.Spec.UseConsolePlugin() && (r.ClusterInfo.HasConsolePlugin() || desired.Spec.ConsolePlugin.Standalone) {
+	if desired.Spec.UseWebConsole() {
 		// Create object builder
-		builder := newBuilder(r.Instance, &desired.Spec, constants.PluginName)
+		builder := newBuilder(r.Instance, &desired.Spec, constants.PluginName, usePlugin)
 
 		if err := r.reconcilePermissions(ctx, &builder, constants.PluginName); err != nil {
 			return err
 		}
 
-		if r.ClusterInfo.HasConsolePlugin() {
+		if usePlugin {
 			if err = r.reconcilePlugin(ctx, &builder, &desired.Spec, constants.PluginName, "NetObserv plugin"); err != nil {
 				return err
 			}
@@ -121,8 +124,8 @@ func (r *CPReconciler) Reconcile(ctx context.Context, desired *flowslatest.FlowC
 
 func (r *CPReconciler) checkAutoPatch(ctx context.Context, desired *flowslatest.FlowCollector, name string) error {
 	console := operatorsv1.Console{}
-	advancedConfig := helper.GetAdvancedPluginConfig(desired.Spec.ConsolePlugin.Advanced)
-	reg := desired.Spec.UseConsolePlugin() && *advancedConfig.Register
+	advancedConfig := helper.GetAdvancedPluginConfig(desired.Spec.WebConsole.Advanced)
+	reg := desired.Spec.UseWebConsole() && *advancedConfig.Register
 	if err := r.Client.Get(ctx, types.NamespacedName{Name: "cluster"}, &console); err != nil {
 		// Console operator CR not found => warn but continue execution
 		if reg {
@@ -172,7 +175,7 @@ func (r *CPReconciler) reconcilePlugin(ctx context.Context, builder *builder, de
 		if err := r.CreateOwned(ctx, consolePlugin); err != nil {
 			return err
 		}
-	} else if pluginNeedsUpdate(&oldPlg, &desired.ConsolePlugin) {
+	} else if pluginNeedsUpdate(&oldPlg, &desired.WebConsole) {
 		if err := r.UpdateIfOwned(ctx, &oldPlg, consolePlugin); err != nil {
 			return err
 		}
@@ -228,7 +231,7 @@ func (r *CPReconciler) reconcileDeployment(ctx context.Context, builder *builder
 		r.deployment,
 		builder.deployment(name, cmDigest),
 		name,
-		desired.ConsolePlugin.UnmanagedReplicas,
+		desired.WebConsole.UnmanagedReplicas,
 		&report,
 	)
 }
@@ -263,7 +266,7 @@ func (r *CPReconciler) reconcileHPA(ctx context.Context, builder *builder, desir
 		r.Instance,
 		r.hpa,
 		builder.autoScaler(),
-		&desired.ConsolePlugin.Autoscaler,
+		&desired.WebConsole.Autoscaler,
 		&report,
 	)
 }

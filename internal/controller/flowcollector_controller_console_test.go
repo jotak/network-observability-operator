@@ -111,7 +111,7 @@ func flowCollectorConsolePluginSpecs() {
 					Namespace:       cpNamespace,
 					DeploymentModel: flowslatest.DeploymentModelDirect,
 					Agent:           flowslatest.FlowCollectorAgent{Type: flowslatest.AgentEBPF},
-					ConsolePlugin: flowslatest.FlowCollectorConsolePlugin{
+					WebConsole: flowslatest.FlowCollectorWebConsole{
 						Enable:          ptr.To(true),
 						ImagePullPolicy: "Never",
 						Advanced: &flowslatest.AdvancedPluginConfig{
@@ -193,9 +193,9 @@ func flowCollectorConsolePluginSpecs() {
 				if err := k8sClient.Get(ctx, crKey, &fc); err != nil {
 					return err
 				}
-				fc.Spec.ConsolePlugin.Advanced.Port = ptr.To(int32(9099))
-				fc.Spec.ConsolePlugin.Replicas = ptr.To(int32(2))
-				fc.Spec.ConsolePlugin.Autoscaler.Status = flowslatest.HPAStatusDisabled
+				fc.Spec.WebConsole.Advanced.Port = ptr.To(int32(9099))
+				fc.Spec.WebConsole.Replicas = ptr.To(int32(2))
+				fc.Spec.WebConsole.Autoscaler.Status = flowslatest.HPAStatusDisabled
 				return k8sClient.Update(ctx, &fc)
 			}).Should(Succeed())
 
@@ -286,7 +286,7 @@ func flowCollectorConsolePluginSpecs() {
 		It("Should be registered", func() {
 			By("Update CR to registered")
 			updateCR(crKey, func(fc *flowslatest.FlowCollector) {
-				fc.Spec.ConsolePlugin.Advanced.Register = ptr.To(true)
+				fc.Spec.WebConsole.Advanced.Register = ptr.To(true)
 			})
 
 			By("Expecting the Console CR to have both plugins registered")
@@ -307,13 +307,13 @@ func flowCollectorConsolePluginSpecs() {
 				if err := k8sClient.Get(ctx, crKey, &fc); err != nil {
 					return err
 				}
-				return *fc.Spec.ConsolePlugin.Enable
+				return *fc.Spec.WebConsole.Enable
 			}, timeout, interval).Should(Equal(true))
 		})
 
 		It("Should cleanup console plugin if disabled", func() {
 			updateCR(crKey, func(fc *flowslatest.FlowCollector) {
-				fc.Spec.ConsolePlugin.Enable = ptr.To(false)
+				fc.Spec.WebConsole.Enable = ptr.To(false)
 			})
 			Eventually(func() error {
 				d := appsv1.Deployment{}
@@ -334,7 +334,7 @@ func flowCollectorConsolePluginSpecs() {
 
 		It("Should recreate console plugin if enabled back", func() {
 			updateCR(crKey, func(fc *flowslatest.FlowCollector) {
-				fc.Spec.ConsolePlugin.Enable = ptr.To(true)
+				fc.Spec.WebConsole.Enable = ptr.To(true)
 			})
 			Eventually(func() error {
 				d := appsv1.Deployment{}

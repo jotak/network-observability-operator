@@ -12,8 +12,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	flowslatest "github.com/netobserv/network-observability-operator/api/flowcollector/v1beta2"
-	"github.com/netobserv/network-observability-operator/internal/controller/consoleplugin"
 	"github.com/netobserv/network-observability-operator/internal/controller/reconcilers"
+	"github.com/netobserv/network-observability-operator/internal/controller/webconsole"
 	"github.com/netobserv/network-observability-operator/internal/pkg/helper"
 	"github.com/netobserv/network-observability-operator/internal/pkg/manager"
 	"github.com/netobserv/network-observability-operator/internal/pkg/manager/status"
@@ -88,7 +88,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result
 			if err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to get controller deployment: %w", err)
 			}
-			staticPluginReconciler := consoleplugin.NewStaticReconciler(r.newDefaultReconcilerInstance(scp))
+			staticPluginReconciler := webconsole.NewStaticReconciler(r.newDefaultReconcilerInstance(scp))
 			if err := staticPluginReconciler.ReconcileStaticPlugin(ctx, true); err != nil {
 				clog.Error(err, "Static plugin reconcile failure")
 				// Set status failure unless it was already set
@@ -115,7 +115,7 @@ func (r *Reconciler) newDefaultReconcilerInstance(clh *helper.Client) *reconcile
 		IsDownstream: r.mgr.Config.DownstreamDeployment,
 	}
 	return reconcilersInfo.NewInstance(map[reconcilers.ImageRef]string{
-		reconcilers.MainImage:                r.mgr.Config.ConsolePluginImage,
+		reconcilers.MainImage:                r.mgr.Config.WebConsoleImage,
 		reconcilers.ConsolePluginCompatImage: r.mgr.Config.ConsolePluginCompatImage,
 	}, r.status)
 }

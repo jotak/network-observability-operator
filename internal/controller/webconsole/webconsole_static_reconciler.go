@@ -1,4 +1,4 @@
-package consoleplugin
+package webconsole
 
 import (
 	"context"
@@ -25,7 +25,7 @@ func (r *CPReconciler) ReconcileStaticPlugin(ctx context.Context, enable bool) e
 	// Fake a FlowCollector to create console plugin and expose forms
 	return r.reconcileStatic(ctx, &flowslatest.FlowCollector{
 		Spec: flowslatest.FlowCollectorSpec{
-			ConsolePlugin: flowslatest.FlowCollectorConsolePlugin{
+			WebConsole: flowslatest.FlowCollectorWebConsole{
 				Enable:   ptr.To(enable),
 				LogLevel: "info",
 				Advanced: &flowslatest.AdvancedPluginConfig{
@@ -51,11 +51,9 @@ func (r *CPReconciler) reconcileStatic(ctx context.Context, desired *flowslatest
 		if err = r.checkAutoPatch(ctx, desired, constants.StaticPluginName); err != nil {
 			return err
 		}
-	}
 
-	if r.ClusterInfo.HasConsolePlugin() {
 		// Create object builder
-		builder := newBuilder(r.Instance, &desired.Spec, constants.StaticPluginName)
+		builder := newBuilder(r.Instance, &desired.Spec, constants.StaticPluginName, true)
 
 		if err = r.reconcilePlugin(ctx, &builder, &desired.Spec, constants.StaticPluginName, "NetObserv static plugin"); err != nil {
 			return err
