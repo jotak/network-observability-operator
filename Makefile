@@ -494,7 +494,7 @@ shortlived-catalog-build: ## Build a temporary catalog image, expiring after 2 w
 # Push the catalog image.
 .PHONY: catalog-push
 catalog-push: ## Push a catalog image.
-	$(OCI_BIN) push ${CATALOG_IMAGE};
+	$(OCI_BIN) push ${CATALOG_IMAGE}
 
 # Deploy the catalog.
 .PHONY: catalog-deploy
