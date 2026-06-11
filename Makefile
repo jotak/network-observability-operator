@@ -77,7 +77,7 @@ endif
 IMAGE ?= $(IMAGE_TAG_BASE):$(VERSION)
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.23
-GOLANGCI_LINT_VERSION = v2.8.0
+GOLANGCI_LINT_VERSION = v2.12.2
 CRDOC_VERSION = 0.6.4
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
@@ -284,7 +284,7 @@ manifests: YQ controller-gen ## Generate WebhookConfiguration, ClusterRole and C
 	$(CONTROLLER_GEN) \
 	rbac:roleName=manager-role \
 	crd:crdVersions=v1 \
-	paths="./api/..." \
+	paths="{./api/...,./internal/pkg/manager}" \
 	output:crd:artifacts:config=config/crd/bases \
 	output:webhook:dir=./config/webhook \
 	webhook
@@ -561,5 +561,4 @@ helm-update: YQ ## Update helm template
 include .mk/sample.mk
 include .mk/development.mk
 include .mk/local.mk
-include .mk/ocp.mk
 include .mk/shortcuts.mk

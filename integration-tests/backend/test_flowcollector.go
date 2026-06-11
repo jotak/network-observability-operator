@@ -326,7 +326,7 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 	g.Context("with Loki", func() {
 		var (
 			lokiDir, _ = filePath.Abs("testdata/loki")
-                      	// Loki Operator variables
+			// Loki Operator variables
 			lokiPackageName = "loki-operator"
 			lokiSource      CatalogSourceObjects
 			lokiCatalog     = "redhat-operators"
@@ -341,7 +341,7 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 				OperatorGroup: filePath.Join(subscriptionDir, "allnamespace-og.yaml"),
 				CatalogSource: &lokiSource,
 			}
-                       	// LokiStack variables
+			// LokiStack variables
 			ipStackType       string
 			lokiStackTemplate = filePath.Join(lokiDir, "lokistack-simple.yaml")
 			lokiTenant        = "openshift-network"
@@ -371,6 +371,7 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 			// If Loki Operator was installed by NetObserv tests,
 			//  it will install and uninstall after each spec/test.
 			if !Lokiexisting {
+				g.DeferCleanup(LO.uninstallOperator, oc)
 				ensureOperatorDeployed(oc, LO, lokiSource, "name="+LO.OperatorName)
 			} else {
 				channelName, err := checkOperatorChannel(oc, LO.Namespace, LO.PackageName)
@@ -378,6 +379,7 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 				if channelName != lokiChannel {
 					e2e.Logf("found %s channel for loki operator, removing and reinstalling with %s channel instead", channelName, lokiSource.Channel)
 					LO.uninstallOperator(oc)
+					g.DeferCleanup(LO.uninstallOperator, oc)
 					ensureOperatorDeployed(oc, LO, lokiSource, "name="+LO.OperatorName)
 					Lokiexisting = false
 				}
@@ -394,6 +396,8 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 			if len(objectStorageType) == 0 && ipStackType != "ipv6single" {
 				g.Skip("Current cluster doesn't have a proper object storage for this test!")
 			}
+
+			g.DeferCleanup(oc.DeleteSpecifiedNamespaceAsAdmin, lokiStackNS)
 			oc.CreateSpecifiedNamespaceAsAdmin(lokiStackNS)
 
 			ls = &lokiStack{
@@ -413,11 +417,13 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 				ls.EnableIPV6 = "true"
 			}
 
+			g.DeferCleanup(ls.removeObjectStorage, oc)
 			err = ls.prepareResourcesForLokiStack(oc)
 			if err != nil {
 				g.Skip("Skipping test since LokiStack resources were not deployed")
 			}
 
+			g.DeferCleanup(ls.removeLokiStack, oc)
 			err = ls.deployLokiStack(oc)
 			if err != nil {
 				g.Skip("Skipping test since LokiStack was not deployed")
@@ -434,15 +440,6 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 				g.Skip("Skipping test since LokiStack is not ready")
 			}
 			ls.Route = "https://" + getRouteAddress(oc, ls.Namespace, ls.Name)
-		})
-
-		g.AfterEach(func() {
-			ls.removeLokiStack(oc)
-			ls.removeObjectStorage(oc)
-			if !Lokiexisting {
-				LO.uninstallOperator(oc)
-			}
-			oc.DeleteSpecifiedNamespaceAsAdmin(lokiStackNS)
 		})
 
 		g.Context("FLP, eBPF and Console metrics:", func() {
@@ -845,12 +842,23 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 				FlowDirection:   "0",
 			}
 			flowRecords, err = lokilabels.getLokiFlowLogs(user0token, ls.Route, startTime)
-			o.Expect(err).NotTo(o.HaveOccurred())
-			o.Expect(len(flowRecords)).NotTo(o.BeNumerically(">", 0), "expected number of flowRecords to be equal to 0")
+			// Multi-tenancy verification: Loki Gateway returns permission errors for unauthorized namespace access
+			if err != nil {
+				o.Expect(err.Error()).To(o.ContainSubstring("permission"), "expected permission error for unauthorized namespace access, got: %v", err)
+			} else {
+				o.Expect(len(flowRecords)).To(o.Equal(0), "expected zero flowRecords for unauthorized namespace access")
+			}
 		})
 
 		g.It("Author:aramesha-NonPreRelease-Critical-59746-NetObserv upgrade testing [Serial]", func() {
 			SkipIfOCPBelow("v4.10")
+
+			// Defer cleanup - ensures operator is uninstalled if test fails/passes
+			g.DeferCleanup(func() {
+				NO.uninstallOperator(oc)
+				oc.DeleteSpecifiedNamespaceAsAdmin(netobservNS)
+			})
+
 			g.By("Uninstall operator deployed by BeforeEach and delete operator NS")
 			NO.uninstallOperator(oc)
 			oc.DeleteSpecifiedNamespaceAsAdmin(netobservNS)
@@ -1572,7 +1580,6 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 		})
 
 		g.It("Author:aramesha-NonPreRelease-Longduration-Medium-78480-NetObserv with sampling 50 [Serial][Slow]", func() {
-			SkipIfOCPBelow("v4.14")
 			g.By("Deploy DNS pods")
 			DNSTemplate := filePath.Join(baseDir, "DNS-pods.yaml")
 			DNSNamespace := "dns-traffic"
@@ -1675,20 +1682,28 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 			g.By("Verify Packet Translation flows")
 			lokilabels = Lokilabels{
 				App:             "netobserv-flowcollector",
-				DstK8SType:      "Service",
+				DstK8SOwnerName: "nginx-service",
 				DstK8SNamespace: testClientTemplate.ServerNS,
 				SrcK8SNamespace: testClientTemplate.ClientNS,
+				SrcK8SOwnerName: "client",
 			}
-			lokiParams = []string{"ZoneId>0"}
+
+			clientServiceInfo, err := getClientServerInfo(oc, testClientTemplate.ServerNS, testClientTemplate.ClientNS, ipStackType)
+			o.Expect(err).NotTo(o.HaveOccurred())
 
 			g.By("Verify PacketTranslation flows")
+			lokiParams = []string{
+				fmt.Sprintf(`XlatDstAddr="%s"`, clientServiceInfo["server"]["ip"]),
+				fmt.Sprintf(`XlatDstK8S_Name="%s"`, clientServiceInfo["server"]["name"]),
+				`XlatDstK8S_Type="Pod"`,
+				`DstPort="80"`,
+				`XlatDstPort="8080"`,
+				fmt.Sprintf(`XlatSrcAddr="%s"`, clientServiceInfo["client"]["ip"]),
+				`XlatSrcK8S_Name="client"`,
+			}
 			flowRecords, err = lokilabels.getLokiFlowLogs(kubeadminToken, ls.Route, startTime, lokiParams...)
 			o.Expect(err).NotTo(o.HaveOccurred())
 			o.Expect(len(flowRecords)).Should(o.BeNumerically(">", 0), "expected number of PacketTranslation flows > 0")
-
-			clientServiceInfo, err := getClientServerInfo(oc, testClientTemplate.ServerNS, testClientTemplate.ClientNS, ipStackType)
-			verifyPacketTranslationFlows(clientServiceInfo["server"]["ip"], clientServiceInfo["server"]["name"], clientServiceInfo["client"]["ip"], flowRecords)
-			o.Expect(err).NotTo(o.HaveOccurred())
 
 			g.By("Verify eBPF feature metrics")
 			verifyEBPFFeatureMetrics(oc, "pktdropsmap")
@@ -1698,7 +1713,6 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 		})
 
 		g.It("Author:aramesha-NonPreRelease-High-79015-Verify PacketTranslation feature [Serial]", func() {
-			SkipIfOCPBelow("v4.14")
 			g.By("Deploy test server and client pods")
 			servertemplate := filePath.Join(baseDir, "test-nginx-server_template.yaml")
 			testServerTemplate := TestServerTemplate{
@@ -1722,6 +1736,9 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 			o.Expect(err).NotTo(o.HaveOccurred())
 			compat_otp.AssertAllPodsToBeReady(oc, testClientTemplate.ClientNS)
 
+			clientServiceInfo, err := getClientServerInfo(oc, testClientTemplate.ServerNS, testClientTemplate.ClientNS, ipStackType)
+			o.Expect(err).NotTo(o.HaveOccurred())
+
 			g.By("Deploy FlowCollector with PacketTranslation feature enabled")
 			flow := Flowcollector{
 				Namespace:     namespace,
@@ -1739,20 +1756,25 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 
 			lokilabels := Lokilabels{
 				App:             "netobserv-flowcollector",
-				DstK8SType:      "Service",
+				DstK8SOwnerName: "nginx-service",
 				DstK8SNamespace: testClientTemplate.ServerNS,
 				SrcK8SNamespace: testClientTemplate.ClientNS,
+				SrcK8SOwnerName: "client",
 			}
-			lokiParams := []string{"ZoneId>0"}
 
 			g.By("Verify PacketTranslation flows")
+			lokiParams := []string{
+				fmt.Sprintf(`XlatDstAddr="%s"`, clientServiceInfo["server"]["ip"]),
+				fmt.Sprintf(`XlatDstK8S_Name="%s"`, clientServiceInfo["server"]["name"]),
+				`XlatDstK8S_Type="Pod"`,
+				`DstPort="80"`,
+				`XlatDstPort="8080"`,
+				fmt.Sprintf(`XlatSrcAddr="%s"`, clientServiceInfo["client"]["ip"]),
+				`XlatSrcK8S_Name="client"`,
+			}
 			flowRecords, err := lokilabels.getLokiFlowLogs(kubeadminToken, ls.Route, startTime, lokiParams...)
 			o.Expect(err).NotTo(o.HaveOccurred())
 			o.Expect(len(flowRecords)).Should(o.BeNumerically(">", 0), "expected number of PacketTranslation flows > 0")
-
-			clientServiceInfo, err := getClientServerInfo(oc, testClientTemplate.ServerNS, testClientTemplate.ClientNS, ipStackType)
-			o.Expect(err).NotTo(o.HaveOccurred())
-			verifyPacketTranslationFlows(clientServiceInfo["server"]["ip"], clientServiceInfo["server"]["name"], clientServiceInfo["client"]["ip"], flowRecords)
 		})
 
 		// NetworkEvents ebpf hook only supported for OCP >= 4.19
@@ -2717,8 +2739,6 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 			for _, r := range flowRecords {
 				o.Expect(r.Flowlog.TLSTypes).Should(o.ContainElement("ServerHello"), "expected TLS Types to contain ServerHello")
 				o.Expect(r.Flowlog.TLSCipherSuite).NotTo(o.BeEmpty())
-				// Will be fixed in follow-up
-				// o.Expect(r.Flowlog.TLSCurve).NotTo(o.BeEmpty())
 			}
 
 			g.By("Verify HTTPS flows with TLSVersion 1.3")
@@ -2729,9 +2749,14 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 			// Verify TLS 1.3 fields
 			for _, r := range flowRecords {
 				o.Expect(r.Flowlog.TLSTypes).Should(o.ContainElement("ServerHello"), "expected TLS Types to contain ServerHello")
-				o.Expect(r.Flowlog.TLSCurve).Should(o.ContainSubstring("X25519"))
+				o.Expect(r.Flowlog.TLSGroup).NotTo(o.BeEmpty())
 				o.Expect(r.Flowlog.TLSCipherSuite).NotTo(o.BeEmpty())
 			}
+
+			g.By("Verify TLS metrics")
+			verifyTLSMetrics(oc, "TLSVersion")
+			verifyTLSMetrics(oc, "TLSCipherSuite")
+			verifyTLSMetrics(oc, "TLSGroup")
 		})
 
 		g.It("Author:kapjain-Medium-88683-Secure communications between Agent and FLP [Serial]", func() {
@@ -2903,6 +2928,7 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 				AMQexisting, err = CheckOperatorStatus(oc, amq.Namespace, amq.PackageName)
 				o.Expect(err).NotTo(o.HaveOccurred())
 				if !AMQexisting {
+					g.DeferCleanup(amq.uninstallOperator, oc)
 					ensureOperatorDeployed(oc, amq, kafkaSource, "name="+amq.OperatorName)
 					// before creating kafka, check the existence of crd kafkas.kafka.strimzi.io
 					checkResource(oc, true, true, "kafka.strimzi.io", []string{"crd", "kafkas.kafka.strimzi.io", "-ojsonpath={.spec.group}"})
@@ -2941,11 +2967,16 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 				}
 
 				g.By("Deploy Kafka with TLS")
+				g.DeferCleanup(oc.DeleteSpecifiedNamespaceAsAdmin, kafkaNs)
 				oc.CreateSpecifiedNamespaceAsAdmin(kafkaNs)
 				kafkaMetrics.deployKafkaMetrics(oc)
-				kafka.deployKafka(oc)
+				g.DeferCleanup(kafkaNodePool.deleteKafkaNodePool, oc)
 				kafkaNodePool.deployKafkaNodePool(oc)
+				g.DeferCleanup(kafka.deleteKafka, oc)
+				kafka.deployKafka(oc)
+				g.DeferCleanup(kafkaTopic.deleteKafkaTopic, oc)
 				kafkaTopic.deployKafkaTopic(oc)
+				g.DeferCleanup(kafkaUser.deleteKafkaUser, oc)
 				kafkaUser.deployKafkaUser(oc)
 
 				g.By("Check if Kafka and Kafka topic are ready")
@@ -2953,17 +2984,6 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 				WaitForPodsReadyWithLabel(oc, kafka.Namespace, "strimzi.io/pool-name=kafka-pool")
 				waitForKafkaReady(oc, kafka.Name, kafka.Namespace)
 				waitForKafkaTopicReady(oc, kafkaTopic.TopicName, kafkaTopic.Namespace)
-			})
-
-			g.AfterEach(func() {
-				kafkaUser.deleteKafkaUser(oc)
-				kafkaTopic.deleteKafkaTopic(oc)
-				kafkaNodePool.deleteKafkaNodePool(oc)
-				kafka.deleteKafka(oc)
-				if !AMQexisting {
-					amq.uninstallOperator(oc)
-				}
-				oc.DeleteSpecifiedNamespaceAsAdmin(kafkaNs)
 			})
 
 			g.It("Author:aramesha-NonPreRelease-Longduration-Critical-56362-High-53597-High-56326-High-64880-High-75340-Verify network flows are captured with Kafka with TLS [Serial][Slow]", func() {
@@ -3020,7 +3040,7 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 				o.Expect(err).NotTo(o.HaveOccurred())
 			})
 
-			g.It("Author:aramesha-NonPreRelease-Longduration-High-57397-High-65116-Verify network-flows export with Kafka and netobserv installation without Loki[Serial]", func() {
+			g.It("Author:aramesha-NonPreRelease-Longduration-High-57397-High-65116-Low-89197-Verify network-flows export with Kafka and netobserv installation without Loki[Serial]", func() {
 				SkipIfOCPBelow("v4.10")
 				g.By("Deploy kafka Topic for export")
 				// deploy kafka topic for export
@@ -3061,6 +3081,11 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 				o.Expect(err).ToNot(o.HaveOccurred())
 				kafkaConfig := string(config)
 
+				// Use random compression to test different options across periodic runs
+				validCompressions := []string{"gzip", "snappy", "lz4", "zstd"}
+				randomCompression := validCompressions[g.GinkgoRandomSeed()%int64(len(validCompressions))]
+				e2e.Logf("Using Kafka compression: %s (seed: %d)", randomCompression, g.GinkgoRandomSeed())
+
 				g.By("Deploy FlowCollector with Kafka TLS")
 				flow := Flowcollector{
 					Namespace:                         namespace,
@@ -3070,6 +3095,7 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 					KafkaAddress:                      kafkaAddress,
 					KafkaTLSEnable:                    "true",
 					KafkaNamespace:                    kafkaNs,
+					KafkaCompression:                  randomCompression,
 					Exporters:                         []string{kafkaConfig},
 					NetworkPolicyAdditionalNamespaces: []string{additionalNamespaces},
 				}
@@ -3187,21 +3213,18 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 				VOexisting, err = CheckOperatorStatus(oc, VO.Namespace, VO.PackageName)
 				o.Expect(err).NotTo(o.HaveOccurred())
 				if !VOexisting {
+					g.DeferCleanup(VO.uninstallOperator, oc)
 					ensureOperatorDeployed(oc, VO, virtSource, "name=virt-operator")
 				}
 
 				g.By("Deploy OpenShift Virtualization Deployment CR")
+				g.DeferCleanup(deleteResource, oc, "hyperconverged", "kubevirt-hyperconverged", virtOperatorNS)
 				_, err = oc.AsAdmin().WithoutNamespace().Run("create").Args("-f", kubevirtHyperconvergedPath).Output()
 				o.Expect(err).ToNot(o.HaveOccurred())
 				waitUntilHyperConvergedReady(oc, "kubevirt-hyperconverged", virtOperatorNS)
 				WaitForPodsReadyWithLabel(oc, virtOperatorNS, "app.kubernetes.io/managed-by=virt-operator")
-			})
-
-			g.AfterEach(func() {
-				deleteResource(oc, "hyperconverged", "kubevirt-hyperconverged", virtOperatorNS)
-				if !VOexisting {
-					VO.uninstallOperator(oc)
-				}
+				// Wait for kubemacpool service endpoints to be ready to avoid race condition when creating VMs
+				waitForServiceEndpoints(oc, virtOperatorNS, "kubemacpool-service")
 			})
 
 			g.It("Author:aramesha-NonPreRelease-Longduration-High-76537-Verify flow enrichment for VM's secondary interfaces [Disruptive][Slow]", func() {

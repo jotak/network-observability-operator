@@ -81,7 +81,7 @@ func getMinIOCreds(oc *exutil.CLI, ns string) s3Credential {
 	secretAccessKey, err := os.ReadFile(dirname + "/secret_access_key")
 	o.Expect(err).NotTo(o.HaveOccurred())
 
-	endpoint := "http://" + getRouteAddress(oc, ns, "minio")
+	endpoint := "https://" + getRouteAddress(oc, ns, "minio")
 	return s3Credential{Endpoint: endpoint, AccessKeyID: string(accessKeyID), SecretAccessKey: string(secretAccessKey)}
 }
 
@@ -89,13 +89,6 @@ func generateS3Config(cred s3Credential) aws.Config {
 	var err error
 	var cfg aws.Config
 	if len(cred.Endpoint) > 0 {
-		customResolver := aws.EndpointResolverWithOptionsFunc(func(_, _ string, _ ...interface{}) (aws.Endpoint, error) {
-			return aws.Endpoint{
-				URL:               cred.Endpoint,
-				HostnameImmutable: true,
-				Source:            aws.EndpointSourceCustom,
-			}, nil
-		})
 		// For ODF and Minio, they're deployed in OCP clusters
 		// In some clusters, we can't connect it without proxy, here add proxy settings to s3 client when there has http_proxy or https_proxy in the env var
 		httpClient := awshttp.NewBuildableClient().WithTransportOptions(func(tr *http.Transport) {
@@ -109,7 +102,7 @@ func generateS3Config(cred s3Credential) aws.Config {
 		})
 		cfg, err = config.LoadDefaultConfig(context.TODO(),
 			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(cred.AccessKeyID, cred.SecretAccessKey, "")),
-			config.WithEndpointResolverWithOptions(customResolver),
+			config.WithBaseEndpoint(cred.Endpoint),
 			config.WithHTTPClient(httpClient),
 			config.WithRegion("auto"))
 	} else {
@@ -665,8 +658,12 @@ func getStorageType(oc *exutil.CLI) string {
 }
 
 // initialize a s3 client with credential
-func newS3Client(cfg aws.Config) *s3.Client {
-	return s3.NewFromConfig(cfg)
+func newS3Client(cfg aws.Config, usePathStyle ...bool) *s3.Client {
+	return s3.NewFromConfig(cfg, func(o *s3.Options) {
+		if len(usePathStyle) > 0 && usePathStyle[0] {
+			o.UsePathStyle = true
+		}
+	})
 }
 
 func getStorageClassName(oc *exutil.CLI) (string, error) {
@@ -814,7 +811,7 @@ func (l lokiStack) prepareResourcesForLokiStack(oc *exutil.CLI) error {
 		{
 			cred := getMinIOCreds(oc, minioNS)
 			cfg := generateS3Config(cred)
-			client := newS3Client(cfg)
+			client := newS3Client(cfg, true)
 			err = createS3Bucket(client, l.BucketName, "")
 			if err != nil {
 				return err
@@ -912,7 +909,7 @@ func (l lokiStack) removeObjectStorage(oc *exutil.CLI) {
 		{
 			cred := getMinIOCreds(oc, minioNS)
 			cfg := generateS3Config(cred)
-			client := newS3Client(cfg)
+			client := newS3Client(cfg, true)
 			err = deleteS3Bucket(client, l.BucketName)
 		}
 	}
