@@ -697,7 +697,6 @@ spec:
           - configmaps
           - namespaces
           - persistentvolumeclaims
-          - secrets
           - serviceaccounts
           - services
           verbs:
