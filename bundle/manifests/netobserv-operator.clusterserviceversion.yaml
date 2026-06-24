@@ -1114,6 +1114,14 @@ spec:
           verbs:
           - create
           - patch
+        - apiGroups:
+          - operators.coreos.com
+          resources:
+          - subscriptions
+          verbs:
+          - get
+          - list
+          - watch
         serviceAccountName: netobserv-controller-manager
     strategy: deployment
   installModes:
