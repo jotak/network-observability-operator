@@ -1,3 +1,4 @@
+# Auto-generated from helm-update.sh
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -132,6 +133,16 @@ rules:
       - get
       - list
       - patch
+      - update
+      - watch
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - create
+      - get
+      - list
       - update
       - watch
   - apiGroups:

@@ -99,6 +99,7 @@ func podTemplate(
 	desired *flowslatest.FlowCollectorSpec,
 	vols *volumes.Builder,
 	netType flowNetworkType,
+	certSecretName string,
 	annotations map[string]string,
 ) corev1.PodTemplateSpec {
 	advancedConfig := helper.GetAdvancedProcessorConfig(desired)
@@ -120,16 +121,26 @@ func podTemplate(
 	case pull:
 		// does not listen for flows => no port
 	}
-	ports = append(ports, corev1.ContainerPort{
-		Name:          healthPortName,
-		ContainerPort: *advancedConfig.HealthPort,
-	})
+	if advancedConfig.HealthPort != nil && *advancedConfig.HealthPort > 0 {
+		ports = append(ports, corev1.ContainerPort{
+			Name:          healthPortName,
+			ContainerPort: *advancedConfig.HealthPort,
+		})
+	}
 	ports = append(ports, corev1.ContainerPort{
 		Name:          prometheusPortName,
 		ContainerPort: desired.Processor.GetMetricsPort(),
 	})
+	// Only expose k8scache port when centralized informers are enabled
+	if desired.Processor.IsInformerCacheProxyEnabled() {
+		ports = append(ports, corev1.ContainerPort{
+			Name:          "k8scache",
+			ContainerPort: desired.Processor.GetK8sCachePort(),
+			Protocol:      corev1.ProtocolTCP,
+		})
+	}
 
-	if advancedConfig.ProfilePort != nil {
+	if advancedConfig.ProfilePort != nil && *advancedConfig.ProfilePort > 0 {
 		ports = append(ports, corev1.ContainerPort{
 			Name:          profilePortName,
 			ContainerPort: *advancedConfig.ProfilePort,
@@ -137,6 +148,25 @@ func podTemplate(
 		})
 	}
 
+	var envs []corev1.EnvVar
+	// we need to sort env map to keep idempotency,
+	// as equal maps could be iterated in different order
+	for _, pair := range helper.KeySorted(advancedConfig.Env) {
+		envs = append(envs, corev1.EnvVar{Name: pair[0], Value: pair[1]})
+	}
+	envs = append(envs, constants.EnvNoHTTP2)
+
+	envs = helper.EnvFromReqsLimits(envs, &desired.Processor.Resources)
+
+	// Build args - only include k8scache flags when centralized informers are enabled
+	// IMPORTANT: This must be called BEFORE extracting volumes/mounts from vols builder,
+	// as it may add certificates to the builder
+	args := []string{
+		fmt.Sprintf(`--config=%s/%s`, configPath, configFile),
+	}
+	addK8sCacheArgs(desired, vols, certSecretName, &args)
+
+	// Extract volumes and mounts AFTER all volume modifications are done
 	volumeMounts := vols.AppendMounts([]corev1.VolumeMount{{
 		MountPath: configPath,
 		Name:      configVolume,
@@ -152,21 +182,11 @@ func podTemplate(
 		},
 	}})
 
-	var envs []corev1.EnvVar
-	// we need to sort env map to keep idempotency,
-	// as equal maps could be iterated in different order
-	for _, pair := range helper.KeySorted(advancedConfig.Env) {
-		envs = append(envs, corev1.EnvVar{Name: pair[0], Value: pair[1]})
-	}
-	envs = append(envs, constants.EnvNoHTTP2)
-
-	envs = helper.EnvFromReqsLimits(envs, &desired.Processor.Resources)
-
 	container := corev1.Container{
 		Name:            constants.FLPName,
 		Image:           imageName,
 		ImagePullPolicy: corev1.PullPolicy(desired.Processor.ImagePullPolicy),
-		Args:            []string{fmt.Sprintf(`--config=%s/%s`, configPath, configFile)},
+		Args:            args,
 		Resources:       *desired.Processor.Resources.DeepCopy(),
 		VolumeMounts:    volumeMounts,
 		Ports:           ports,
@@ -267,15 +287,61 @@ func metricsSettings(desired *flowslatest.FlowCollectorSpec, vol *volumes.Builde
 	return metricsSettings
 }
 
+// addK8sCacheArgs adds k8scache server arguments for centralized informers
+func addK8sCacheArgs(desired *flowslatest.FlowCollectorSpec, vols *volumes.Builder, certSecretName string, args *[]string) {
+	if desired.Processor.InformerCacheProxy == nil || desired.Processor.InformerCacheProxy.Enabled == nil || !*desired.Processor.InformerCacheProxy.Enabled {
+		return
+	}
+
+	*args = append(*args,
+		fmt.Sprintf("--k8scache.port=%d", desired.Processor.GetK8sCachePort()),
+		"--k8scache.address=0.0.0.0",
+	)
+
+	tlsType := desired.Processor.InformerCacheProxy.GetTLSType()
+
+	if tlsType == flowslatest.TLSDisabled {
+		return
+	}
+
+	var serverCert *flowslatest.CertificateReference
+	var caFile *flowslatest.FileReference
+
+	if tlsType == flowslatest.TLSProvided {
+		// Manual mode: user provides certificates
+		if desired.Processor.InformerCacheProxy.TLS != nil && desired.Processor.InformerCacheProxy.TLS.ProvidedCertificates != nil {
+			serverCert = desired.Processor.InformerCacheProxy.TLS.ProvidedCertificates.ServerCert
+			caFile = desired.Processor.InformerCacheProxy.TLS.ProvidedCertificates.CAFile
+		}
+	} else if tlsType == flowslatest.TLSAuto || tlsType == flowslatest.TLSAutoMTLS {
+		// Auto mode: use service-ca certificate for the k8scache service
+		serverCert = helper.DefaultCertificateReference(certSecretName, "")
+		if tlsType == flowslatest.TLSAutoMTLS {
+			caFile = helper.DefaultCAReference("netobserv-ca", "")
+		}
+	}
+
+	if serverCert != nil {
+		certPath, keyPath := vols.AddCertificate(serverCert, "svc-certs")
+		*args = append(*args,
+			"--k8scache.tls-enabled=true",
+			fmt.Sprintf("--k8scache.tls-cert-path=%s", certPath),
+			fmt.Sprintf("--k8scache.tls-key-path=%s", keyPath),
+		)
+
+		if caFile != nil {
+			caPath := vols.AddVolume(caFile, "k8scache-client-ca")
+			*args = append(*args, fmt.Sprintf("--k8scache.tls-ca-path=%s", caPath))
+		}
+	}
+}
+
 func getJSONConfigs(desired *flowslatest.FlowCollectorSpec, vol *volumes.Builder, promTLS *flowslatest.CertificateReference, pipeline *PipelineBuilder, dynCMName string) (string, string, error) {
 	metricsSettings := metricsSettings(desired, vol, promTLS)
 	advancedConfig := helper.GetAdvancedProcessorConfig(desired)
 	static, dynamic := pipeline.GetSplitStageParams()
 	config := map[string]interface{}{
-		"log-level": desired.Processor.LogLevel,
-		"health": map[string]interface{}{
-			"port": *advancedConfig.HealthPort,
-		},
+		"log-level":       desired.Processor.LogLevel,
 		"pipeline":        pipeline.GetStages(),
 		"parameters":      static,
 		"metricsSettings": metricsSettings,
@@ -285,10 +351,12 @@ func getJSONConfigs(desired *flowslatest.FlowCollectorSpec, vol *volumes.Builder
 			FileName:  configFile,
 		},
 	}
-	if advancedConfig.ProfilePort != nil {
-		config["profile"] = map[string]interface{}{
-			"port": *advancedConfig.ProfilePort,
-		}
+	if advancedConfig.HealthPort != nil && *advancedConfig.HealthPort != 0 {
+		config["healthAddr"] = fmt.Sprintf(":%d", *advancedConfig.HealthPort)
+	}
+	if advancedConfig.ProfilePort != nil && *advancedConfig.ProfilePort != 0 {
+		// Use "localhost" for ipv4+ipv6 cases, restricted to the local loop
+		config["pprofAddr"] = fmt.Sprintf("localhost:%d", *advancedConfig.ProfilePort)
 	}
 	jsonStatic, err := json.Marshal(config)
 	if err != nil {
@@ -337,9 +405,9 @@ func promService(desired *flowslatest.FlowCollectorSpec, svcName, namespace, app
 	return &svc
 }
 
-func serviceMonitor(desired *flowslatest.FlowCollectorSpec, smName, svcName, namespace, appLabel, version string, isDownstream, useEndpointSlices bool) *monitoringv1.ServiceMonitor {
+func serviceMonitor(desired *flowslatest.FlowCollectorSpec, smName, svcName, namespace, appLabel, version string, useEndpointSlices bool) *monitoringv1.ServiceMonitor {
 	serverName := fmt.Sprintf("%s.%s.svc", svcName, namespace)
-	scheme, smTLS := helper.GetServiceMonitorTLSConfig(&desired.Processor.Metrics.Server.TLS, serverName, isDownstream)
+	scheme, smTLS := helper.GetServiceMonitorTLSConfig(&desired.Processor.Metrics.Server.TLS, serverName)
 	var sdRole *monitoringv1.ServiceDiscoveryRole
 	if useEndpointSlices {
 		sdRole = ptr.To(monitoringv1.EndpointSliceRole)

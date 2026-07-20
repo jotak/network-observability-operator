@@ -17,6 +17,7 @@ import (
 	osv1 "github.com/openshift/api/console/v1"
 	operatorsv1 "github.com/openshift/api/operator/v1"
 	securityv1 "github.com/openshift/api/security/v1"
+	olm "github.com/operator-framework/api/pkg/operators/v1alpha1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	ascv2 "k8s.io/api/autoscaling/v2"
@@ -42,6 +43,7 @@ import (
 	flowsv1beta2 "github.com/netobserv/netobserv-operator/api/flowcollector/v1beta2"
 	slicesv1alpha1 "github.com/netobserv/netobserv-operator/api/flowcollectorslice/v1alpha1"
 	metricsv1alpha1 "github.com/netobserv/netobserv-operator/api/flowmetrics/v1alpha1"
+	"github.com/netobserv/netobserv-operator/internal/controller/constants"
 	"github.com/netobserv/netobserv-operator/internal/pkg/helper"
 	"github.com/netobserv/netobserv-operator/internal/pkg/manager"
 	"github.com/netobserv/netobserv-operator/internal/pkg/manager/status"
@@ -52,13 +54,23 @@ const (
 	Interval = 1 * time.Second
 )
 
+type Environment int
+
+const (
+	EnvVanillaNaked Environment = iota
+	EnvVanillaFullStack
+	EnvOpenShift
+)
+
 type SuiteContext struct {
 	testEnv    *envtest.Environment
 	cancel     context.CancelFunc
 	kubeConfig string
 }
 
-func PrepareEnvTest(controllers []manager.Registerer, namespaces []string, basePath string) (context.Context, client.Client, *SuiteContext) {
+type ContextGetter func() (context.Context, client.Client)
+
+func PrepareEnvTest(env Environment, controllers []manager.Registerer, opNamespace string, namespaces []string, basePath string) (context.Context, client.Client, *SuiteContext) {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 	ctx, cancel := context.WithCancel(context.TODO())
 
@@ -70,12 +82,6 @@ func PrepareEnvTest(controllers []manager.Registerer, namespaces []string, baseP
 				// Hack to reintroduce when the API stored version != latest version: comment-out config/crd/bases and use hack instead; see also Makefile "hack-crd-for-test"
 				filepath.Join(basePath, "..", "..", "config", "crd", "bases"),
 				// filepath.Join(basePath, "..", "hack"),
-				// We need to install the ConsolePlugin CRD to test setup of our Network Console Plugin
-				filepath.Join(basePath, "..", "..", "vendor", "github.com", "openshift", "api", "console", "v1", "zz_generated.crd-manifests"),
-				filepath.Join(basePath, "..", "..", "vendor", "github.com", "openshift", "api", "config", "v1", "zz_generated.crd-manifests"),
-				filepath.Join(basePath, "..", "..", "vendor", "github.com", "openshift", "api", "operator", "v1", "zz_generated.crd-manifests"),
-				filepath.Join(basePath, "..", "..", "vendor", "github.com", "openshift", "api", "security", "v1", "zz_generated.crd-manifests"),
-				filepath.Join(basePath, "..", "..", "test-assets"),
 			},
 			CleanUpAfterUse: true,
 			WebhookOptions: envtest.WebhookInstallOptions{
@@ -85,6 +91,21 @@ func PrepareEnvTest(controllers []manager.Registerer, namespaces []string, baseP
 			},
 		},
 		ErrorIfCRDPathMissing: true,
+	}
+	switch env {
+	case EnvOpenShift:
+		// We need to install the ConsolePlugin CRD to test setup of our Network Console Plugin
+		testEnv.CRDInstallOptions.Paths = append(testEnv.CRDInstallOptions.Paths,
+			filepath.Join(basePath, "..", "..", "vendor", "github.com", "openshift", "api", "console", "v1", "zz_generated.crd-manifests"),
+			filepath.Join(basePath, "..", "..", "vendor", "github.com", "openshift", "api", "config", "v1", "zz_generated.crd-manifests"),
+			filepath.Join(basePath, "..", "..", "vendor", "github.com", "openshift", "api", "operator", "v1", "zz_generated.crd-manifests"),
+			filepath.Join(basePath, "..", "..", "vendor", "github.com", "openshift", "api", "security", "v1", "zz_generated.crd-manifests"),
+			filepath.Join(basePath, "..", "..", "test-assets"),
+		)
+	case EnvVanillaFullStack:
+		testEnv.CRDInstallOptions.Paths = append(testEnv.CRDInstallOptions.Paths, filepath.Join(basePath, "..", "..", "test-assets"))
+	case EnvVanillaNaked:
+		// nothing more
 	}
 
 	cfg, err := testEnv.Start()
@@ -130,10 +151,14 @@ func PrepareEnvTest(controllers []manager.Registerer, namespaces []string, baseP
 	err = lokiv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
+	err = olm.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
 	k8sClient, err := client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
+	namespaces = append(namespaces, opNamespace)
 	for _, ns := range namespaces {
 		err := k8sClient.Create(ctx, &corev1.Namespace{
 			TypeMeta:   metav1.TypeMeta{Kind: "Namespace", APIVersion: "v1"},
@@ -142,11 +167,65 @@ func PrepareEnvTest(controllers []manager.Registerer, namespaces []string, baseP
 		Expect(err).NotTo(HaveOccurred())
 	}
 
+	if env == EnvOpenShift {
+		setupOpenShiftClusterResources(ctx, k8sClient, opNamespace)
+	}
+
+	managerConfig := manager.Config{
+		EBPFAgentImage:        "quay.io/netobserv/netobserv-ebpf-agent:test",
+		FlowlogsPipelineImage: "quay.io/netobserv/flowlogs-pipeline:test",
+		WebConsoleImage:       "quay.io/netobserv/network-observability-console-plugin:test",
+		WebConsolePF4Image:    "quay.io/netobserv/network-observability-console-plugin:test-pf4",
+		WebConsolePF5Image:    "quay.io/netobserv/network-observability-console-plugin:test-pf5",
+		Namespace:             opNamespace,
+	}
+	if env == EnvOpenShift {
+		managerConfig.Vendor = constants.VendorOpenShift
+		managerConfig.StaticPluginConfig = manager.StaticPluginConfig{
+			InheritTolerationFromSubscription: "netobserv-operator",
+		}
+	}
+
+	k8sManager, err := manager.NewManager(
+		ctx,
+		cfg,
+		&managerConfig,
+		&ctrl.Options{
+			Scheme: scheme.Scheme,
+			Metrics: server.Options{
+				BindAddress: "0", // disable
+			},
+		},
+		controllers,
+	)
+
+	Expect(err).ToNot(HaveOccurred())
+	Expect(k8sManager).NotTo(BeNil())
+
+	err = helper.SetCRDForTests(filepath.Join(basePath, "..", ".."))
+	Expect(err).NotTo(HaveOccurred())
+
+	createFakeController(ctx, k8sClient, opNamespace)
+
+	go func() {
+		defer GinkgoRecover()
+		err = k8sManager.Start(ctx)
+		Expect(err).ToNot(HaveOccurred(), "failed to run manager")
+	}()
+
+	return ctx, k8sClient, &SuiteContext{
+		testEnv:    testEnv,
+		cancel:     cancel,
+		kubeConfig: kubeConfig,
+	}
+}
+
+func setupOpenShiftClusterResources(ctx context.Context, k8sClient client.Client, opNamespace string) {
 	cv := &configv1.ClusterVersion{
 		ObjectMeta: metav1.ObjectMeta{Name: "version"},
 		Spec:       configv1.ClusterVersionSpec{ClusterID: "test-id"},
 	}
-	err = k8sClient.Create(ctx, cv)
+	err := k8sClient.Create(ctx, cv)
 	Expect(err).NotTo(HaveOccurred())
 	cv.Status = configv1.ClusterVersionStatus{
 		History: []configv1.UpdateHistory{
@@ -168,44 +247,11 @@ func PrepareEnvTest(controllers []manager.Registerer, namespaces []string, baseP
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	k8sManager, err := manager.NewManager(
-		ctx,
-		cfg,
-		&manager.Config{
-			EBPFAgentImage:        "registry-proxy.engineering.redhat.com/rh-osbs/network-observability-ebpf-agent@sha256:6481481ba23375107233f8d0a4f839436e34e50c2ec550ead0a16c361ae6654e",
-			FlowlogsPipelineImage: "registry-proxy.engineering.redhat.com/rh-osbs/network-observability-flowlogs-pipeline@sha256:6481481ba23375107233f8d0a4f839436e34e50c2ec550ead0a16c361ae6654e",
-			ConsolePluginImageVariants: []manager.ConsolePluginImageVariant{
-				{Image: "registry-proxy.engineering.redhat.com/rh-osbs/network-observability-console-plugin@sha256:6481481ba23375107233f8d0a4f839436e34e50c2ec550ead0a16c361ae6654e", MinVersion: "4.14.0"},
-			},
-			DownstreamDeployment: false,
-			Namespace:            "main-namespace",
-		},
-		&ctrl.Options{
-			Scheme: scheme.Scheme,
-			Metrics: server.Options{
-				BindAddress: "0", // disable
-			},
-		},
-		controllers,
-	)
-
-	Expect(err).ToNot(HaveOccurred())
-	Expect(k8sManager).NotTo(BeNil())
-
-	err = helper.SetCRDForTests(filepath.Join(basePath, "..", ".."))
+	err = k8sClient.Create(ctx, &olm.Subscription{
+		ObjectMeta: metav1.ObjectMeta{Name: "netobserv-operator", Namespace: opNamespace},
+		Spec:       &olm.SubscriptionSpec{},
+	})
 	Expect(err).NotTo(HaveOccurred())
-
-	go func() {
-		defer GinkgoRecover()
-		err = k8sManager.Start(ctx)
-		Expect(err).ToNot(HaveOccurred(), "failed to run manager")
-	}()
-
-	return ctx, k8sClient, &SuiteContext{
-		testEnv:    testEnv,
-		cancel:     cancel,
-		kubeConfig: kubeConfig,
-	}
 }
 
 func writeKubeConfig(testEnv *envtest.Environment) (string, error) {
@@ -234,11 +280,11 @@ func TeardownEnvTest(suiteContext *SuiteContext) {
 	Expect(err).NotTo(HaveOccurred())
 }
 
-func CreateFakeController(ctx context.Context, k8sClient client.Client) {
+func createFakeController(ctx context.Context, k8sClient client.Client, opNamespace string) {
 	created := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "netobserv-controller-manager",
-			Namespace: "main-namespace",
+			Namespace: opNamespace,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Selector: &metav1.LabelSelector{

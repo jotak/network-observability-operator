@@ -39,6 +39,7 @@ var pullPolicy = corev1.PullIfNotPresent
 var minReplicas = int32(1)
 var maxReplicas = int32(5)
 var targetCPU = int32(75)
+var outputRecordTypes = flowslatest.LogTypeAll
 
 const testNamespace = "flp"
 
@@ -52,7 +53,7 @@ func getConfig() flowslatest.FlowCollectorSpec {
 			Resources:       rs,
 			Metrics: flowslatest.FLPMetrics{
 				Server: flowslatest.MetricsServerConfig{
-					Port: ptr.To(int32(9090)),
+					Port: ptr.To(int32(9401)),
 					TLS: flowslatest.ServerTLS{
 						Type: flowslatest.TLSDisabled,
 					},

@@ -102,8 +102,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result
 		return ctrl.Result{}, nil
 	}
 
-	r.status.SetUnknown()
-	defer r.status.Commit(ctx, r.Client)
+	commit := r.status.Reset()
+	defer commit(ctx, r.Client)
 
 	err = r.reconcile(ctx, clh, fc)
 	if err != nil {
@@ -179,6 +179,7 @@ func (r *Reconciler) reconcile(ctx context.Context, clh *helper.Client, fc *flow
 	// `reconcilers.Common` is dependent on the FlowCollector object, which isn't known at start time.
 	images := map[reconcilers.ImageRef]string{reconcilers.MainImage: r.mgr.Config.FlowlogsPipelineImage}
 	reconcilers := []subReconciler{
+		newInformerReconciler(cmn.NewInstance(images, r.mgr.Status.ForComponent(status.FLPInformers))),
 		newMonolithReconciler(cmn.NewInstance(images, r.mgr.Status.ForComponent(status.FLPMonolith))),
 		newTransformerReconciler(cmn.NewInstance(images, r.mgr.Status.ForComponent(status.FLPTransformer))),
 	}
@@ -216,12 +217,12 @@ func (r *Reconciler) updateExporterStatuses(fc *flowslatest.FlowCollector) {
 
 func (r *Reconciler) newCommonInfo(clh *helper.Client, ns string, loki *helper.LokiConfig) reconcilers.Common {
 	return reconcilers.Common{
-		Client:       *clh,
-		Namespace:    ns,
-		ClusterInfo:  r.mgr.ClusterInfo,
-		Watcher:      r.watcher,
-		Loki:         loki,
-		IsDownstream: r.mgr.Config.DownstreamDeployment,
+		Client:      *clh,
+		Namespace:   ns,
+		ClusterInfo: r.mgr.ClusterInfo,
+		Watcher:     r.watcher,
+		Loki:        loki,
+		Vendor:      r.mgr.Config.Vendor,
 	}
 }
 
