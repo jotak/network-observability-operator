@@ -22,5 +22,8 @@ export EPOC_TIMESTAMP=$(date +%s)
 
 VERSION="${BUILDVERSION}" TARGET_CSV_FILE="${csv_file}" python3 ./hack/patch_csv.py
 
+sed -i 's/operators.operatorframework.io.bundle.channels.v1: latest,community/operators.operatorframework.io.bundle.channels.v1: stable/g' ./bundle/metadata/annotations.yaml
+sed -i 's/operators.operatorframework.io.bundle.channel.default.v1: community/operators.operatorframework.io.bundle.channel.default.v1: stable/g' ./bundle/metadata/annotations.yaml
+
 #Using downstream base image
 echo "Container file updated"
