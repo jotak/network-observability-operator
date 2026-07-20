@@ -33,27 +33,6 @@ endif
 # Port-forward (for loki/grafana deployments)
 PORT_FWD ?= true
 
-# CHANNELS define the bundle channels used in the bundle.
-# Add a new line here if you would like to change its default config. (E.g CHANNELS = "candidate,fast,stable")
-# To re-generate a bundle for other specific channels without changing the standard setup, you can:
-# - use the CHANNELS as arg of the bundle target (e.g make bundle CHANNELS=candidate,fast,stable)
-# - use environment variables to overwrite this value (e.g export CHANNELS="candidate,fast,stable")
-CHANNELS := latest,community
-ifneq ($(origin CHANNELS), undefined)
-BUNDLE_CHANNELS := --channels=$(CHANNELS)
-endif
-
-# DEFAULT_CHANNEL defines the default channel used in the bundle.
-# Add a new line here if you would like to change its default config. (E.g DEFAULT_CHANNEL = "stable")
-# To re-generate a bundle for any other default channel without changing the default setup, you can:
-# - use the DEFAULT_CHANNEL as arg of the bundle target (e.g make bundle DEFAULT_CHANNEL=stable)
-# - use environment variables to overwrite this value (e.g export DEFAULT_CHANNEL="stable")
-DEFAULT_CHANNEL := community
-ifneq ($(origin DEFAULT_CHANNEL), undefined)
-BUNDLE_DEFAULT_CHANNEL := --default-channel=$(DEFAULT_CHANNEL)
-endif
-BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
-
 # IMAGE_TAG_BASE defines the namespace and part of the image name for remote images.
 # This variable is used to construct full image tags for bundle and catalog images.
 #
@@ -68,10 +47,16 @@ BUNDLE_IMAGE ?= $(IMAGE_TAG_BASE)-bundle:v$(BUNDLE_VERSION)
 ifeq ("$(BUNDLE_TARGET)", "OpenShift")
 	BUNDLE_CONFIG = config/openshift/olm
 	BUNDLE_OUT = bundles/openshift
+  CHANNELS = stable
+  DEFAULT_CHANNEL = stable
 else
 	BUNDLE_CONFIG = config/k8s/olm
 	BUNDLE_OUT = bundles/k8s
+  CHANNELS = latest,community
+  DEFAULT_CHANNEL = community
 endif
+
+BUNDLE_METADATA_OPTS ?= --channels=$(CHANNELS) --default-channel=$(DEFAULT_CHANNEL)
 
 # If we don't want to set bundle date (upon bundle update call), store current date
 ifneq ("$(BUNDLE_SET_DATE)", "true")
