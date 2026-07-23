@@ -20,7 +20,6 @@ import (
 	"github.com/netobserv/netobserv-operator/internal/controller/reconcilers"
 	"github.com/netobserv/netobserv-operator/internal/pkg/helper"
 	"github.com/netobserv/netobserv-operator/internal/pkg/manager/status"
-	"github.com/netobserv/netobserv-operator/internal/pkg/resources"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
@@ -170,14 +169,7 @@ func (r *CPReconciler) reconcilePermissions(ctx context.Context, builder *builde
 		return r.CreateOwned(ctx, builder.serviceAccount(name))
 	} // update not needed for now
 
-	binding := resources.GetClusterRoleBinding(
-		r.Namespace,
-		constants.PluginShortName,
-		name,
-		name,
-		constants.ConsoleTokenReviewRole,
-	)
-	return r.ReconcileClusterRoleBinding(ctx, binding)
+	return nil
 }
 
 func (r *CPReconciler) reconcilePlugin(ctx context.Context, builder *builder, desired *flowslatest.FlowCollectorSpec, name, displayName string) error {

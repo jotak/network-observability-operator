@@ -63,21 +63,6 @@ var (
 			return cr
 		},
 	}
-	ClusterRoleBindings = GVKInfo{
-		Obj: &rbacv1.ClusterRoleBinding{},
-		Getter: func(ctx context.Context, cl kubernetes.Interface, key client.ObjectKey) (runtime.Object, error) {
-			return cl.RbacV1().ClusterRoleBindings().Get(ctx, key.Name, metav1.GetOptions{})
-		},
-		Watcher: func(ctx context.Context, cl kubernetes.Interface, key client.ObjectKey) (watch.Interface, error) {
-			opts := metav1.ListOptions{FieldSelector: fields.OneTermEqualSelector(metav1.ObjectNameField, key.Name).String()}
-			return cl.RbacV1().ClusterRoleBindings().Watch(ctx, opts)
-		},
-		Cleanup: func(obj runtime.Object) runtime.Object {
-			crb := obj.(*rbacv1.ClusterRoleBinding)
-			crb.SetManagedFields([]metav1.ManagedFieldsEntry{})
-			return crb
-		},
-	}
 	Daemonsets = GVKInfo{
 		Obj: &appsv1.DaemonSet{},
 		Getter: func(ctx context.Context, cl kubernetes.Interface, key client.ObjectKey) (runtime.Object, error) {
