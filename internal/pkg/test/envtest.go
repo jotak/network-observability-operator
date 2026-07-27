@@ -172,18 +172,28 @@ func PrepareEnvTest(controllers []manager.Registerer, namespaces []string, baseP
 	})
 	Expect(err).NotTo(HaveOccurred())
 
+	err = k8sClient.Create(ctx, &olm.Subscription{
+		ObjectMeta: metav1.ObjectMeta{Name: "netobserv-operator", Namespace: "main-namespace"},
+		Spec:       &olm.SubscriptionSpec{},
+	})
+	Expect(err).NotTo(HaveOccurred())
+
+	managerConfig := manager.Config{
+		EBPFAgentImage:        "quay.io/netobserv/netobserv-ebpf-agent:test",
+		FlowlogsPipelineImage: "quay.io/netobserv/flowlogs-pipeline:test",
+		ConsolePluginImageVariants: []manager.ConsolePluginImageVariant{
+			{Image: "quay.io/netobserv/network-observability-console-plugin:test", MinVersion: "4.14.0"},
+		},
+		Namespace: "main-namespace",
+		StaticPluginConfig: manager.StaticPluginConfig{
+			InheritTolerationFromSubscription: "netobserv-operator",
+		},
+	}
+
 	k8sManager, err := manager.NewManager(
 		ctx,
 		cfg,
-		&manager.Config{
-			EBPFAgentImage:        "registry-proxy.engineering.redhat.com/rh-osbs/network-observability-ebpf-agent@sha256:6481481ba23375107233f8d0a4f839436e34e50c2ec550ead0a16c361ae6654e",
-			FlowlogsPipelineImage: "registry-proxy.engineering.redhat.com/rh-osbs/network-observability-flowlogs-pipeline@sha256:6481481ba23375107233f8d0a4f839436e34e50c2ec550ead0a16c361ae6654e",
-			ConsolePluginImageVariants: []manager.ConsolePluginImageVariant{
-				{Image: "registry-proxy.engineering.redhat.com/rh-osbs/network-observability-console-plugin@sha256:6481481ba23375107233f8d0a4f839436e34e50c2ec550ead0a16c361ae6654e", MinVersion: "4.14.0"},
-			},
-			DownstreamDeployment: false,
-			Namespace:            "main-namespace",
-		},
+		&managerConfig,
 		&ctrl.Options{
 			Scheme: scheme.Scheme,
 			Metrics: server.Options{
