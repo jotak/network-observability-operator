@@ -48,9 +48,7 @@ func (r *CPReconciler) reconcileStatic(ctx context.Context, desired *flowslatest
 	}
 
 	if r.ClusterInfo.HasConsolePlugin() {
-		if err = r.checkAutoPatch(ctx, desired, constants.StaticPluginName); err != nil {
-			return err
-		}
+		r.checkAutoPatch(ctx, desired, constants.StaticPluginName)
 	}
 
 	if r.ClusterInfo.HasConsolePlugin() {

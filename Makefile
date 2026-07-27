@@ -284,7 +284,7 @@ manifests: YQ controller-gen ## Generate WebhookConfiguration, ClusterRole and C
 	$(CONTROLLER_GEN) \
 	rbac:roleName=manager-role \
 	crd:crdVersions=v1 \
-	paths="./api/..." \
+	paths="{./api/...,./internal/pkg/manager}" \
 	output:crd:artifacts:config=config/crd/bases \
 	output:webhook:dir=./config/webhook \
 	webhook
@@ -296,7 +296,7 @@ manifests: YQ controller-gen ## Generate WebhookConfiguration, ClusterRole and C
 
 gencode: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 ifndef SKIP_CODE_GEN
-	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./api/..."
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="{./api/...,./internal/pkg/manager}"
 endif
 
 doc: CRDOC ## Generate markdown documentation
