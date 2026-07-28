@@ -84,11 +84,11 @@ for relatedImage in csv['spec']['relatedImages']:
       relatedImage["image"] = ebpf_image
    elif relatedImage["name"] == "flowlogs-pipeline":
       relatedImage["image"] = flp_image
-   elif relatedImage["name"] == "console-plugin":
+   elif relatedImage["name"] == "web-console":
       relatedImage["image"] = console_image
-   elif relatedImage["name"] == "console-plugin-pf4":
+   elif relatedImage["name"] == "web-console-pf4":
       relatedImage["image"] = console_pf4_image or console_image
-   elif relatedImage["name"] == "console-plugin-pf5":
+   elif relatedImage["name"] == "web-console-pf5":
       relatedImage["image"] = console_pf5_image or console_image
    elif relatedImage["name"] == "demo-loki":
       relatedImage["image"] = LOKI_IMAGE_PULLSPEC
