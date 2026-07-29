@@ -315,7 +315,7 @@ spec:
     - name: image-url
       value: $(tasks.build-container.results.IMAGE_URL)
     - name: TARGET_DIRS
-      value: $(params.sast-target-dirs)
+      value: "hack,scripts"
     runAfter:
     - build-container
     taskRef:
