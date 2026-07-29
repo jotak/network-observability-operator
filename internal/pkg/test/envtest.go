@@ -239,6 +239,9 @@ func writeKubeConfig(testEnv *envtest.Environment) (string, error) {
 }
 
 func TeardownEnvTest(suiteContext *SuiteContext) {
+	if suiteContext == nil {
+		return
+	}
 	if suiteContext.kubeConfig != "" {
 		defer os.Remove(suiteContext.kubeConfig)
 	}
