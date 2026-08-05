@@ -66,11 +66,11 @@ for env in csv['spec']['install']['spec']['deployments'][0]['spec']['template'][
       env['value'] = ebpf_image
    if env['name'] == 'RELATED_IMAGE_FLOWLOGS_PIPELINE':
       env['value'] = flp_image
-   if env['name'] == 'RELATED_IMAGE_CONSOLE_PLUGIN':
+   if env['name'] == 'RELATED_IMAGE_WEB_CONSOLE':
       env['value'] = console_image
-   if env['name'] == 'RELATED_IMAGE_CONSOLE_PLUGIN_PF4':
+   if env['name'] == 'RELATED_IMAGE_WEB_CONSOLE_PF4':
       env['value'] = console_pf4_image
-   if env['name'] == 'RELATED_IMAGE_CONSOLE_PLUGIN_PF5':
+   if env['name'] == 'RELATED_IMAGE_WEB_CONSOLE_PF5':
       env['value'] = console_pf5_image
    if env['name'] == 'RELATED_IMAGE_DEMO_LOKI':
       env['value'] = LOKI_IMAGE_PULLSPEC
