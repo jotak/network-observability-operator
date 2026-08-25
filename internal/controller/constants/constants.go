@@ -60,9 +60,16 @@ const (
 	ConsoleNamespace                = "openshift-console"
 	DNSNamespace                    = "openshift-dns"
 
-	// Roles, must match names in config/rbac/component_roles.yaml (without netobserv- prefix)
-	ExposeMetricsRole RoleName = "netobserv-expose-metrics"
-	ConfigWatcherRole RoleName = "netobserv-config-watcher"
+	// [Cluster]Roles, must match names in config/rbac/component_roles.yaml (without netobserv- prefix)
+	LokiWriterRole          ClusterRoleName = "netobserv-loki-writer"
+	LokiReaderRole          ClusterRoleName = "netobserv-loki-reader"
+	PromReaderRole          ClusterRoleName = "netobserv-metrics-reader"
+	ExposeMetricsRole       RoleName        = "netobserv-expose-metrics"
+	FLPInformersRole        ClusterRoleName = "netobserv-informers"
+	HostNetworkRole         ClusterRoleName = "netobserv-hostnetwork"
+	ConsoleTokenReviewRole  ClusterRoleName = "netobserv-token-review"
+	FlowCollectorViewerRole ClusterRoleName = "netobserv-flowcollector-viewer-role"
+	ConfigWatcherRole       RoleName        = "netobserv-config-watcher"
 )
 
 var FlowCollectorName = types.NamespacedName{Name: "cluster"}

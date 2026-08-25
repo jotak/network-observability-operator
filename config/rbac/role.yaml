@@ -74,6 +74,14 @@ rules:
   - update
   - watch
 - apiGroups:
+  - apps
+  resources:
+  - replicasets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - autoscaling
   resources:
   - horizontalpodautoscalers
@@ -127,6 +135,16 @@ rules:
   - update
   - watch
 - apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
   - discovery.k8s.io
   resources:
   - endpointslices
@@ -165,6 +183,15 @@ rules:
   - patch
   - update
 - apiGroups:
+  - k8s.ovn.org
+  resources:
+  - clusteruserdefinednetworks
+  - userdefinednetworks
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - loki.grafana.com
   resources:
   - lokistacks
@@ -172,6 +199,20 @@ rules:
   - get
   - list
   - watch
+- apiGroups:
+  - loki.grafana.com
+  resourceNames:
+  - logs
+  resources:
+  - network
+  verbs:
+  - create
+- apiGroups:
+  - metrics.k8s.io
+  resources:
+  - pods
+  verbs:
+  - create
 - apiGroups:
   - monitoring.coreos.com
   resources:
@@ -213,6 +254,20 @@ rules:
   verbs:
   - get
   - list
+  - watch
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resourceNames:
+  - netobserv-flowcollector-viewer-role
+  - netobserv-hostnetwork
+  - netobserv-informers
+  - netobserv-loki-writer
+  - netobserv-token-review
+  resources:
+  - clusterrolebindings
+  verbs:
+  - get
+  - update
   - watch
 - apiGroups:
   - rbac.authorization.k8s.io

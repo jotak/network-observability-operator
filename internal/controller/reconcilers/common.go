@@ -49,6 +49,10 @@ func (c *Common) NewInstance(images map[ImageRef]string, st status.Instance) *In
 	}
 }
 
+func (c *Common) ReconcileClusterRoleBinding(ctx context.Context, namespace, sa string, ref constants.ClusterRoleName, isDelete bool) error {
+	return ReconcileClusterRoleBinding(ctx, &c.Client, namespace, sa, ref, isDelete)
+}
+
 func (c *Common) ReconcileRoleBinding(ctx context.Context, desired *rbacv1.RoleBinding) error {
 	return ReconcileRoleBinding(ctx, &c.Client, desired)
 }

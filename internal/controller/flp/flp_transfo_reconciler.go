@@ -73,15 +73,20 @@ func (r *transformerReconciler) reconcile(ctx context.Context, desired *flowslat
 		return err
 	}
 
-	if desired.Spec.OnHold() {
-		r.Status.SetUnused("FlowCollector is on hold")
-		r.Managed.TryDeleteAll(ctx)
-		return nil
+	isDelete := desired.Spec.OnHold() || !desired.Spec.UseKafka()
+
+	if err := r.reconcileCRB(ctx, &desired.Spec, isDelete); err != nil {
+		return err
 	}
 
-	if !desired.Spec.UseKafka() {
-		r.Status.SetUnused("Transformer only used with Kafka")
+	if isDelete {
 		r.Managed.TryDeleteAll(ctx)
+		if desired.Spec.OnHold() {
+			r.Status.SetUnused("FlowCollector is on hold")
+		}
+		if !desired.Spec.UseKafka() {
+			r.Status.SetUnused("Transformer only used with Kafka")
+		}
 		return nil
 	}
 
@@ -244,6 +249,22 @@ func (r *transformerReconciler) reconcilePermissions(ctx context.Context, builde
 	// Config watcher
 	r.rbConfigWatcher = resources.GetRoleBinding(r.Namespace, transfoShortName, transfoName, transfoName, constants.ConfigWatcherRole, true)
 	if err := r.ReconcileRoleBinding(ctx, r.rbConfigWatcher); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *transformerReconciler) reconcileCRB(ctx context.Context, desired *flowslatest.FlowCollectorSpec, isDelete bool) error {
+	// Loki writer
+	useLokiWriter := desired.UseLoki() && desired.Loki.Mode == flowslatest.LokiModeLokiStack && !isDelete
+	if err := r.ReconcileClusterRoleBinding(ctx, r.Namespace, transfoName, constants.LokiWriterRole, !useLokiWriter); err != nil {
+		return err
+	}
+
+	// Informers - when centralized informers are disabled, flowlogs-pipeline needs direct K8s API access
+	useInformers := !desired.Processor.IsInformerCacheProxyEnabled() && !isDelete
+	if err := r.ReconcileClusterRoleBinding(ctx, r.Namespace, transfoName, constants.FLPInformersRole, !useInformers); err != nil {
 		return err
 	}
 

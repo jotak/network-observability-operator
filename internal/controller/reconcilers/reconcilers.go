@@ -6,6 +6,7 @@ import (
 	"reflect"
 
 	flowslatest "github.com/netobserv/netobserv-operator/api/flowcollector/v1beta2"
+	"github.com/netobserv/netobserv-operator/internal/controller/constants"
 	"github.com/netobserv/netobserv-operator/internal/pkg/helper"
 	appsv1 "k8s.io/api/apps/v1"
 	ascv2 "k8s.io/api/autoscaling/v2"
@@ -47,6 +48,54 @@ var (
 		GenericFunc: func(_ event.GenericEvent) bool { return false },
 	})
 )
+
+// ReconcileClusterRoleBinding updates the current role binding with the provided service account as a subject.
+// It does NOT try to create or delete it: operand CRBs are expected to be preinstalled. The operator does not have create permission.
+func ReconcileClusterRoleBinding(ctx context.Context, cl *helper.Client, namespace, sa string, ref constants.ClusterRoleName, isDelete bool) error {
+	log := log.FromContext(ctx)
+	crb := rbacv1.ClusterRoleBinding{}
+	if err := cl.Get(ctx, types.NamespacedName{Name: string(ref)}, &crb); err != nil {
+		if errors.IsNotFound(err) {
+			return fmt.Errorf("can't reconcile ClusterRoleBinding %s, it should be preinstalled; was it removed? - %w", ref, err)
+		}
+		return fmt.Errorf("can't reconcile ClusterRoleBinding %s: %w", ref, err)
+	}
+	subject := rbacv1.Subject{
+		Kind:      "ServiceAccount",
+		Name:      sa,
+		Namespace: namespace,
+	}
+	index := findSubject(crb.Subjects, subject)
+	if index >= 0 && isDelete {
+		log.Info("DELETING subject from ClusterRoleBinding "+string(ref), "Namespace", namespace, "SA", sa)
+		crb.Subjects = append(crb.Subjects[:index], crb.Subjects[index+1:]...)
+		err := cl.Update(ctx, &crb)
+		if err != nil {
+			log.Error(err, "Failed to delete subject from ClusterRoleBinding "+string(ref), "Namespace", namespace, "SA", sa)
+			return err
+		}
+		return nil
+	}
+	if index < 0 && !isDelete {
+		log.Info("ADDING subject to ClusterRoleBinding "+string(ref), "Namespace", namespace, "SA", sa)
+		crb.Subjects = append(crb.Subjects, subject)
+		err := cl.Update(ctx, &crb)
+		if err != nil {
+			log.Error(err, "Failed to add subject to ClusterRoleBinding "+string(ref), "Namespace", namespace, "SA", sa)
+			return err
+		}
+	}
+	return nil
+}
+
+func findSubject(current []rbacv1.Subject, subject rbacv1.Subject) int {
+	for i := range current {
+		if current[i].Kind == subject.Kind && current[i].Name == subject.Name && current[i].Namespace == subject.Namespace {
+			return i
+		}
+	}
+	return -1
+}
 
 func ReconcileRoleBinding(ctx context.Context, cl *helper.Client, desired *rbacv1.RoleBinding) error {
 	actual := rbacv1.RoleBinding{}

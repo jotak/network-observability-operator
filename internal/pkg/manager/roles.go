@@ -31,6 +31,9 @@ package manager
 // Operator needs to create roles and cluster roles for granting transitive rights to its workloads
 //+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=rolebindings,verbs=get;list;create;delete;update;watch
 
+// Operator needs to update specific cluster roles bindings for operands
+//+kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterrolebindings,resourceNames=netobserv-loki-writer;netobserv-informers;netobserv-hostnetwork;netobserv-token-review;netobserv-flowcollector-viewer-role,verbs=get;update;watch
+
 // Operator needs to patch Console CR (cluster scope)
 //+kubebuilder:rbac:groups=operator.openshift.io,resources=consoles,verbs=get;list;patch;watch
 
@@ -68,3 +71,18 @@ package manager
 
 // (deprecated) Operator to create HPA for its workloads in a user-defined namespace
 //+kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers,verbs=create;delete;patch;update;get;watch;list
+
+// Transitive: operator needs to grant RS read permission to FLP in a user-defined namespace
+//+kubebuilder:rbac:groups=apps,resources=replicasets,verbs=get;list;watch
+
+// Transitive: operator needs to grant network logs creation permission to FLP in a user-defined namespace
+//+kubebuilder:rbac:groups=loki.grafana.com,resources=network,resourceNames=logs,verbs=create
+
+// Transitive: operator needs to grant POST query permission for Thanos queries to the web console, any namespace
+//+kubebuilder:rbac:groups=metrics.k8s.io,resources=pods,verbs=create
+
+// Transitive: operator needs to grant UDN read permission to FLP at the cluster scope
+//+kubebuilder:rbac:groups=k8s.ovn.org,resources=userdefinednetworks;clusteruserdefinednetworks,verbs=get;list;watch
+
+// Transitive: operator needs to grant Lease permissions to informers
+//+kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update

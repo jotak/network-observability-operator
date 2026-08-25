@@ -11,6 +11,7 @@ import (
 	flowslatest "github.com/netobserv/netobserv-operator/api/flowcollector/v1beta2"
 	sliceslatest "github.com/netobserv/netobserv-operator/api/flowcollectorslice/v1alpha1"
 	metricslatest "github.com/netobserv/netobserv-operator/api/flowmetrics/v1alpha1"
+	"github.com/netobserv/netobserv-operator/internal/controller/constants"
 	"github.com/netobserv/netobserv-operator/internal/controller/reconcilers"
 	"github.com/netobserv/netobserv-operator/internal/pkg/helper"
 	"github.com/netobserv/netobserv-operator/internal/pkg/manager/status"
@@ -58,6 +59,11 @@ func (r *informerReconciler) reconcile(ctx context.Context, desired *flowslatest
 		return nil
 	}
 
+	// Reconcile RBAC
+	if err := r.reconcilePermissions(ctx, !desired.Spec.Processor.IsInformerCacheProxyEnabled()); err != nil {
+		return fmt.Errorf("failed to reconcile permissions: %w", err)
+	}
+
 	// Check if informers are enabled (default: false)
 	if !desired.Spec.Processor.IsInformerCacheProxyEnabled() {
 		// Informers disabled - cleanup resources and use local informers mode
@@ -90,6 +96,10 @@ func (r *informerReconciler) reconcileServiceAccount(ctx context.Context, builde
 		}
 	} // We only configure name, update is not needed for now
 	return nil
+}
+
+func (r *informerReconciler) reconcilePermissions(ctx context.Context, isDelete bool) error {
+	return r.ReconcileClusterRoleBinding(ctx, r.Namespace, informerName, constants.FLPInformersRole, isDelete)
 }
 
 func (r *informerReconciler) reconcileDeployment(ctx context.Context, builder *informerBuilder) error {

@@ -72,15 +72,20 @@ func (r *monolithReconciler) reconcile(ctx context.Context, desired *flowslatest
 		return err
 	}
 
-	if desired.Spec.OnHold() {
-		r.Status.SetUnused("FlowCollector is on hold")
-		r.Managed.TryDeleteAll(ctx)
-		return nil
+	isDelete := desired.Spec.OnHold() || desired.Spec.UseKafka()
+
+	if err := r.reconcileCRB(ctx, &desired.Spec, isDelete); err != nil {
+		return err
 	}
 
-	if desired.Spec.UseKafka() {
-		r.Status.SetUnused("Monolith only used without Kafka")
+	if isDelete {
 		r.Managed.TryDeleteAll(ctx)
+		if desired.Spec.OnHold() {
+			r.Status.SetUnused("FlowCollector is on hold")
+		}
+		if desired.Spec.UseKafka() {
+			r.Status.SetUnused("Monolith only used without Kafka")
+		}
 		return nil
 	}
 
@@ -246,6 +251,28 @@ func (r *monolithReconciler) reconcilePermissions(ctx context.Context, builder *
 	// Config watcher
 	r.rbConfigWatcher = resources.GetRoleBinding(r.Namespace, monoShortName, monoName, monoName, constants.ConfigWatcherRole, true)
 	if err := r.ReconcileRoleBinding(ctx, r.rbConfigWatcher); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *monolithReconciler) reconcileCRB(ctx context.Context, desired *flowslatest.FlowCollectorSpec, isDelete bool) error {
+	// Host network
+	useHostNet := r.ClusterInfo.IsOpenShift() && desired.UseHostNetwork() && !isDelete
+	if err := r.ReconcileClusterRoleBinding(ctx, r.Namespace, monoName, constants.HostNetworkRole, !useHostNet); err != nil {
+		return err
+	}
+
+	// Loki writer
+	useLokiWriter := desired.UseLoki() && desired.Loki.Mode == flowslatest.LokiModeLokiStack && !isDelete
+	if err := r.ReconcileClusterRoleBinding(ctx, r.Namespace, monoName, constants.LokiWriterRole, !useLokiWriter); err != nil {
+		return err
+	}
+
+	// Informers - when centralized informers are disabled, flowlogs-pipeline needs direct K8s API access
+	useInformers := !desired.Processor.IsInformerCacheProxyEnabled() && !isDelete
+	if err := r.ReconcileClusterRoleBinding(ctx, r.Namespace, monoName, constants.FLPInformersRole, !useInformers); err != nil {
 		return err
 	}
 
