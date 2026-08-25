@@ -187,6 +187,7 @@ func PrepareEnvTest(env Environment, controllers []manager.Registerer, opNamespa
 		WebConsolePF5Image:          "quay.io/netobserv/network-observability-console-plugin:test-pf5",
 		Namespace:                   opNamespace,
 		DeployOperatorNetworkPolicy: ptr.To(true),
+		DefaultOperandsNamespace:    "netobserv",
 	}
 	if env == EnvOpenShift {
 		managerConfig.Vendor = constants.VendorOpenShift
