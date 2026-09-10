@@ -931,9 +931,11 @@ spec:
           - netobserv-loki-writer
           - netobserv-token-review
           resources:
-          - clusterrole
+          - clusterrolebindings
           verbs:
-          - bind
+          - get
+          - update
+          - watch
         - apiGroups:
           - rbac.authorization.k8s.io
           resourceNames:
@@ -943,11 +945,9 @@ spec:
           - netobserv-loki-writer
           - netobserv-token-review
           resources:
-          - clusterrolebindings
+          - clusterroles
           verbs:
-          - get
-          - update
-          - watch
+          - bind
         - apiGroups:
           - rbac.authorization.k8s.io
           resources:
