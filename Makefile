@@ -437,7 +437,7 @@ bundle-nogen: YQ OPSDK kustomize set-manager-images ## Generate final bundle fil
 # Dissociate kustomize builds csv, samples and the rest, because they don't share exactly the same properties (like namespace injection)
 # OLM discards CRBs with empty subjects, so inject a temporary placeholder for generation, then empty subjects in the output.
 # We work on copies to avoid leaving dirty files on error.
-	CRB_FILES="config/rbac/component_role_bindings.yaml config/k8s/olm/rbac.yaml"; \
+	CRB_FILES="config/rbac/component_role_bindings.yaml"; \
 	for f in $$CRB_FILES; do cp "$$f" "$$f.bak"; done; \
 	trap 'for f in $$CRB_FILES; do mv "$$f.bak" "$$f"; done' EXIT; \
 	for f in $$CRB_FILES; do \
