@@ -516,6 +516,25 @@ func FlowCollectorConsolePluginSpecs(env test.Environment, ctxGetter test.Contex
 			test.CleanupCR(ctx, k8sClient, crKey)
 		})
 
+		It("Should have emptied the operand ClusterRoleBindings via the finalizer", func() {
+			for _, name := range []string{
+				"netobserv-token-review",
+				"netobserv-flowcollector-viewer-role",
+				"netobserv-loki-writer",
+				"netobserv-informers",
+				"netobserv-hostnetwork",
+			} {
+				By("Expecting subjects removed from " + name)
+				Eventually(func() interface{} {
+					rb := rbacv1.ClusterRoleBinding{}
+					if err := k8sClient.Get(ctx, types.NamespacedName{Name: name}, &rb); err != nil {
+						return err
+					}
+					return rb.Subjects
+				}, timeout, interval).Should(BeEmpty())
+			}
+		})
+
 		It("Should delete fake controller", func() {
 			dp := appsv1.Deployment{}
 			By("Retrieve controller deployment")

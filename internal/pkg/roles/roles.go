@@ -22,6 +22,17 @@ const (
 	ConfigWatcherRole       RoleName        = "netobserv-config-watcher"
 )
 
+// OperandClusterRoleBindings lists the preinstalled ClusterRoleBindings whose subjects are managed
+// by the operator: subjects are added when operands need them, and emptied when the FlowCollector
+// is deleted. The bindings themselves are preinstalled empty shells and are never created/deleted here.
+var OperandClusterRoleBindings = []ClusterRoleName{
+	LokiWriterRole,
+	FLPInformersRole,
+	HostNetworkRole,
+	ConsoleTokenReviewRole,
+	FlowCollectorViewerRole,
+}
+
 func GetRoleBindingName(shortName string, ref RoleName) string {
 	return string(ref) + "-" + shortName
 }

@@ -26,8 +26,11 @@ import (
 var (
 	IgnoreStatusChange = builder.WithPredicates(predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			// Update only if spec / annotations / labels change, ie. ignore status changes
+			// Update only if spec / annotations / labels change, ie. ignore status changes.
+			// Also react to deletion: setting a deletionTimestamp doesn't bump the generation,
+			// so we must catch it here for finalizers to be processed.
 			return (e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration()) ||
+				IsMarkedForDeletion(e.ObjectNew) != IsMarkedForDeletion(e.ObjectOld) ||
 				!equality.Semantic.DeepEqual(e.ObjectNew.GetAnnotations(), e.ObjectOld.GetAnnotations()) ||
 				!equality.Semantic.DeepEqual(e.ObjectNew.GetLabels(), e.ObjectOld.GetLabels())
 		},
@@ -65,6 +68,12 @@ var (
 	}
 )
 
+// IsMarkedForDeletion returns true when the object has a non-zero deletionTimestamp.
+func IsMarkedForDeletion(o client.Object) bool {
+	ts := o.GetDeletionTimestamp()
+	return ts != nil && !ts.IsZero()
+}
+
 // ReconcileClusterRoleBinding updates the current role binding with the provided service account as a subject.
 // It does NOT try to create or delete it: operand CRBs are expected to be preinstalled. The operator does not have create permission.
 func ReconcileClusterRoleBinding(ctx context.Context, cl *helper.Client, namespace, sa string, ref roles.ClusterRoleName, isDelete bool) error {
@@ -100,6 +109,30 @@ func ReconcileClusterRoleBinding(ctx context.Context, cl *helper.Client, namespa
 			log.Error(err, "Failed to add subject to ClusterRoleBinding "+string(ref), "Namespace", namespace, "SA", sa)
 			return err
 		}
+	}
+	return nil
+}
+
+// EmptyClusterRoleBinding removes all subjects from the given preinstalled ClusterRoleBinding.
+// The binding itself is kept (it is expected to be preinstalled as an empty shell, and the operator
+// does not have delete permission on it). Used to clean up upon FlowCollector deletion.
+func EmptyClusterRoleBinding(ctx context.Context, cl *helper.Client, ref roles.ClusterRoleName) error {
+	log := log.FromContext(ctx)
+	crb := rbacv1.ClusterRoleBinding{}
+	if err := cl.Get(ctx, types.NamespacedName{Name: string(ref)}, &crb); err != nil {
+		if errors.IsNotFound(err) {
+			return fmt.Errorf("can't empty ClusterRoleBinding %s, it should be preinstalled; was it removed? - %w", ref, err)
+		}
+		return fmt.Errorf("can't empty ClusterRoleBinding %s: %w", ref, err)
+	}
+	if len(crb.Subjects) == 0 {
+		return nil
+	}
+	log.Info("EMPTYING subjects from ClusterRoleBinding " + string(ref))
+	crb.Subjects = nil
+	if err := cl.Update(ctx, &crb); err != nil {
+		log.Error(err, "Failed to empty subjects from ClusterRoleBinding "+string(ref))
+		return err
 	}
 	return nil
 }
