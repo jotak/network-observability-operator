@@ -6,7 +6,9 @@ import (
 	"reflect"
 
 	flowslatest "github.com/netobserv/netobserv-operator/api/flowcollector/v1beta2"
+	"github.com/netobserv/netobserv-operator/internal/controller/constants"
 	"github.com/netobserv/netobserv-operator/internal/pkg/helper"
+	"github.com/netobserv/netobserv-operator/internal/pkg/manager/enqueuer"
 	"github.com/netobserv/netobserv-operator/internal/pkg/roles"
 	appsv1 "k8s.io/api/apps/v1"
 	ascv2 "k8s.io/api/autoscaling/v2"
@@ -21,6 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 var (
@@ -76,7 +79,7 @@ func IsMarkedForDeletion(o client.Object) bool {
 
 // ReconcileClusterRoleBinding updates the current role binding with the provided service account as a subject.
 // It does NOT try to create or delete it: operand CRBs are expected to be preinstalled. The operator does not have create permission.
-func ReconcileClusterRoleBinding(ctx context.Context, cl *helper.Client, namespace, sa string, ref roles.ClusterRoleName, isDelete bool) error {
+func ReconcileClusterRoleBinding(ctx context.Context, q enqueuer.Static, cl *helper.Client, namespace, sa string, ref roles.ClusterRoleName, isDelete bool) error {
 	log := log.FromContext(ctx)
 	crb := rbacv1.ClusterRoleBinding{}
 	if err := cl.Get(ctx, types.NamespacedName{Name: string(ref)}, &crb); err != nil {
@@ -85,6 +88,15 @@ func ReconcileClusterRoleBinding(ctx context.Context, cl *helper.Client, namespa
 		}
 		return fmt.Errorf("can't reconcile ClusterRoleBinding %s: %w", ref, err)
 	}
+	if q != nil {
+		if err := q.EnqueueOnChange(ctx, &crb, reconcile.Request{NamespacedName: constants.FlowCollectorName}); err != nil {
+			log.Error(err, "Failed to setup request enqueuer on ClusterRoleBinding "+string(ref))
+			return err
+		}
+	} else {
+		log.Info("No enqueuer set up for ClusterRoleBinding " + string(ref))
+	}
+
 	subject := rbacv1.Subject{
 		Kind:      "ServiceAccount",
 		Name:      sa,
@@ -121,7 +133,10 @@ func EmptyClusterRoleBinding(ctx context.Context, cl *helper.Client, ref roles.C
 	crb := rbacv1.ClusterRoleBinding{}
 	if err := cl.Get(ctx, types.NamespacedName{Name: string(ref)}, &crb); err != nil {
 		if errors.IsNotFound(err) {
-			return fmt.Errorf("can't empty ClusterRoleBinding %s, it should be preinstalled; was it removed? - %w", ref, err)
+			// This should in theory return an error, as CRB should be left as empty shells on FC removal.
+			// However, to prevent finalization deadlock when all resources are removed at once (FC+OLM bundle), let's be more permissive here.
+			log.Info("ClusterRoleBinding not found, cannot empty subjects.", "name", ref)
+			return nil
 		}
 		return fmt.Errorf("can't empty ClusterRoleBinding %s: %w", ref, err)
 	}

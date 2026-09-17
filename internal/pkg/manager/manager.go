@@ -18,8 +18,10 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
@@ -159,4 +161,42 @@ func NewManager(
 
 func (m *Manager) GetClient() client.Client {
 	return m.Client
+}
+
+// StaticControllerEnqueuer creates a static enqueuer (implements enqueuer.Static), intended for tracking static resources with always-enabled watch
+type StaticControllerEnqueuer struct {
+	group string
+	ctrl  controller.Controller
+	nc    *narrowcache.Client
+}
+
+// NewStaticControllerEnqueuer creates a static enqueuer (implements enqueuer.Static), intended for tracking static resources with always-enabled watch
+func (m *Manager) NewStaticControllerEnqueuer(group string, ctrl controller.Controller) *StaticControllerEnqueuer {
+	return &StaticControllerEnqueuer{group: group, ctrl: ctrl, nc: m.Client.(*narrowcache.Client)}
+}
+
+func (c *StaticControllerEnqueuer) EnqueueOnChange(ctx context.Context, obj client.Object, req reconcile.Request) error {
+	return c.nc.SafeEnqueueRequestOnEvents(ctx, c.group, c.ctrl, obj, req, false)
+}
+
+// DynamicControllerEnqueuer creates a dynamic enqueuer (implements enqueuer.Dynamic),
+// intended for tracking dynamic resources, tracking the watch status (active/inactive)
+type DynamicControllerEnqueuer struct {
+	group string
+	ctrl  controller.Controller
+	nc    *narrowcache.Client
+}
+
+// NewDynamicControllerEnqueuer creates a dynamic enqueuer (implements enqueuer.Dynamic),
+// intended for tracking dynamic resources, tracking the watch status (active/inactive)
+func (m *Manager) NewDynamicControllerEnqueuer(group string, ctrl controller.Controller) *DynamicControllerEnqueuer {
+	return &DynamicControllerEnqueuer{group: group, ctrl: ctrl, nc: m.Client.(*narrowcache.Client)}
+}
+
+func (c *DynamicControllerEnqueuer) EnqueueOnChange(ctx context.Context, obj client.Object, req reconcile.Request) error {
+	return c.nc.SafeEnqueueRequestOnEvents(ctx, c.group, c.ctrl, obj, req, true)
+}
+
+func (c *DynamicControllerEnqueuer) ResetActiveWatches() {
+	c.nc.ResetActiveWatches(c.group)
 }

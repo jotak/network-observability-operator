@@ -28,6 +28,7 @@ import (
 	"github.com/netobserv/netobserv-operator/internal/pkg/cleanup"
 	"github.com/netobserv/netobserv-operator/internal/pkg/helper"
 	"github.com/netobserv/netobserv-operator/internal/pkg/manager"
+	"github.com/netobserv/netobserv-operator/internal/pkg/manager/enqueuer"
 	"github.com/netobserv/netobserv-operator/internal/pkg/manager/status"
 	"github.com/netobserv/netobserv-operator/internal/pkg/roles"
 	"github.com/netobserv/netobserv-operator/internal/pkg/watchers"
@@ -35,6 +36,7 @@ import (
 
 const (
 	flowsFinalizer = "flows.netobserv.io/finalizer"
+	ctrlName       = "legacy"
 )
 
 // FlowCollectorReconciler reconciles a FlowCollector object
@@ -44,6 +46,7 @@ type FlowCollectorReconciler struct {
 	status           status.Instance
 	watcher          *watchers.Watcher
 	ctrl             controller.Controller
+	ctrlQ            enqueuer.Static
 	lokistackWatcher *lokistack.Watcher
 }
 
@@ -57,7 +60,7 @@ func Start(ctx context.Context, mgr *manager.Manager) (manager.PostCreateHook, e
 	}
 
 	builder := ctrl.NewControllerManagedBy(mgr.Manager).
-		Named("legacy").
+		Named(ctrlName).
 		For(&flowslatest.FlowCollector{}, reconcilers.IgnoreStatusChange).
 		Owns(&appsv1.Deployment{}, reconcilers.UpdateOrDeleteOnlyPred).
 		Owns(&appsv1.DaemonSet{}, reconcilers.UpdateOrDeleteOnlyPred).
@@ -70,6 +73,7 @@ func Start(ctx context.Context, mgr *manager.Manager) (manager.PostCreateHook, e
 		builder.Owns(&osv1.ConsolePlugin{}, reconcilers.UpdateOrDeleteOnlyPred)
 	}
 
+	var ctrl controller.Controller
 	r.lokistackWatcher = lokistack.Start(ctx, mgr, builder, func() controller.Controller { return r.ctrl })
 
 	// When a PrometheusRule changes, trigger reconcile so console-plugin config is updated (recording-rule annotations)
@@ -93,7 +97,11 @@ func Start(ctx context.Context, mgr *manager.Manager) (manager.PostCreateHook, e
 		return nil, err
 	}
 	r.ctrl = ctrl
-	r.watcher = watchers.NewWatcher(ctrl, mgr.Config.Namespace)
+	r.ctrlQ = mgr.NewStaticControllerEnqueuer(ctrlName, ctrl)
+	r.watcher = watchers.NewWatcher(
+		mgr.NewDynamicControllerEnqueuer(ctrlName+"-watcher", ctrl),
+		mgr.Config.Namespace,
+	)
 
 	return nil, nil
 }
@@ -240,6 +248,7 @@ func (r *FlowCollectorReconciler) finalize(ctx context.Context, clh *helper.Clie
 
 func (r *FlowCollectorReconciler) newCommonInfo(clh *helper.Client, ns string, loki *helper.LokiConfig) reconcilers.Common {
 	return reconcilers.Common{
+		Enqueuer:    r.ctrlQ,
 		Client:      *clh,
 		Namespace:   ns,
 		ClusterInfo: r.mgr.ClusterInfo,

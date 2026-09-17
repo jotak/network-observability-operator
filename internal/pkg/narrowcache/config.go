@@ -302,5 +302,8 @@ func (c *Config) CreateClient(underlying client.Client) (*Client, error) {
 		liveClient:     liveClient,
 		watchedGVKs:    watchedGVKs,
 		watchedObjects: make(map[string]*watchedObject),
+		idempotentSources: idempotentSources{
+			registered: make(map[string]map[string]bool),
+		},
 	}, nil
 }
