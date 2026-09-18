@@ -867,6 +867,15 @@ func ControllerSpecs(env test.Environment, ctxGetter test.ContextGetter) {
 				return false
 			}, timeout, interval).Should(BeTrue())
 		})
+
+		It("Should remove the Loki writer subject when leaving LokiStack mode", func() {
+			By("Expecting the flowlogs-pipeline subject to be removed from the Loki writer ClusterRoleBinding")
+			Eventually(func() interface{} {
+				// Manual mode no longer needs the Loki writer role: the subject added in LokiStack
+				// mode must be removed, leaving the preinstalled binding as an empty shell again.
+				return expectClusterRoleBinding(ctx, k8sClient, roles.LokiWriterRole, operatorNamespace /* empty expect list */)
+			}, timeout, interval).Should(Succeed())
+		})
 	})
 
 	Context("Checking CR ownership", func() {
