@@ -114,38 +114,39 @@ DATE=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # When PIN_DIGEST is true, store all digests in variables, and export them to avoid
 # duplicate image inspections on nested make calls
+# Pinning assumes quay.io/netobserv images; currently not supported for fork builds (contributions are welcome)
 ifeq ("$(PIN_DIGEST)", "true")
 ifndef OPERATOR_DIGEST
 # would fail with podman, not supported so far (podman needs pull before running inspect) ; support can be added if needed, or through skopeo
 # podman pull $image && podman inspect $image --format '{{.Digest}}'
-OPERATOR_DIGEST := $(shell docker buildx imagetools inspect quay.io/netobserv/network-observability-operator:$(VERSION) --format '{{json .Manifest.Digest}}' 2>/dev/null | tr -d '"')
+OPERATOR_DIGEST := $(shell docker buildx imagetools inspect quay.io/netobserv/network-observability-operator:$(VERSION) --format '{{json .Manifest.Digest}}' | tr -d '"')
 endif
 $(info Pinning operator: $(VERSION) => $(OPERATOR_DIGEST))
 ifndef BPF_DIGEST
-BPF_DIGEST := $(shell docker buildx imagetools inspect quay.io/netobserv/netobserv-ebpf-agent:$(BPF_VERSION) --format '{{json .Manifest.Digest}}' 2>/dev/null | tr -d '"')
+BPF_DIGEST := $(shell docker buildx imagetools inspect quay.io/netobserv/netobserv-ebpf-agent:$(BPF_VERSION) --format '{{json .Manifest.Digest}}' | tr -d '"')
 endif
 $(info Pinning eBPF Agent: $(BPF_VERSION) => $(BPF_DIGEST))
 ifndef FLP_DIGEST
-FLP_DIGEST := $(shell docker buildx imagetools inspect quay.io/netobserv/flowlogs-pipeline:$(FLP_VERSION) --format '{{json .Manifest.Digest}}' 2>/dev/null | tr -d '"')
+FLP_DIGEST := $(shell docker buildx imagetools inspect quay.io/netobserv/flowlogs-pipeline:$(FLP_VERSION) --format '{{json .Manifest.Digest}}' | tr -d '"')
 endif
 $(info Pinning FLP: $(FLP_VERSION) => $(FLP_DIGEST))
 ifndef PLG_DIGEST
-PLG_DIGEST := $(shell docker buildx imagetools inspect quay.io/netobserv/network-observability-console-plugin:$(PLG_VERSION) --format '{{json .Manifest.Digest}}' 2>/dev/null | tr -d '"')
+PLG_DIGEST := $(shell docker buildx imagetools inspect quay.io/netobserv/network-observability-console-plugin:$(PLG_VERSION) --format '{{json .Manifest.Digest}}' | tr -d '"')
 endif
 $(info Pinning console plugin: $(PLG_VERSION) => $(PLG_DIGEST))
 ifndef SWC_DIGEST
-SWC_DIGEST := $(shell docker buildx imagetools inspect quay.io/netobserv/network-observability-standalone-frontend:$(PLG_VERSION) --format '{{json .Manifest.Digest}}' 2>/dev/null | tr -d '"')
+SWC_DIGEST := $(shell docker buildx imagetools inspect quay.io/netobserv/network-observability-standalone-frontend:$(PLG_VERSION) --format '{{json .Manifest.Digest}}' | tr -d '"')
 endif
 $(info Pinning standalone web console: $(PLG_VERSION) => $(SWC_DIGEST))
 
 # Only get pf4/5 digests for OpenShift bundles
 ifeq ("$(BUNDLE_TARGET)", "OpenShift")
 ifndef PLG_DIGEST_PF4
-PLG_DIGEST_PF4 := $(shell docker buildx imagetools inspect quay.io/netobserv/network-observability-console-plugin:$(PLG_VERSION)-pf4 --format '{{json .Manifest.Digest}}' 2>/dev/null | tr -d '"')
+PLG_DIGEST_PF4 := $(shell docker buildx imagetools inspect quay.io/netobserv/network-observability-console-plugin:$(PLG_VERSION)-pf4 --format '{{json .Manifest.Digest}}' | tr -d '"')
 endif
 $(info Pinning console plugin (pf4): $(PLG_VERSION)-pf4 => $(PLG_DIGEST_PF4))
 ifndef PLG_DIGEST_PF5
-PLG_DIGEST_PF5 := $(shell docker buildx imagetools inspect quay.io/netobserv/network-observability-console-plugin:$(PLG_VERSION)-pf5 --format '{{json .Manifest.Digest}}' 2>/dev/null | tr -d '"')
+PLG_DIGEST_PF5 := $(shell docker buildx imagetools inspect quay.io/netobserv/network-observability-console-plugin:$(PLG_VERSION)-pf5 --format '{{json .Manifest.Digest}}' | tr -d '"')
 endif
 $(info Pinning console plugin (pf5): $(PLG_VERSION)-pf5 => $(PLG_DIGEST_PF5))
 endif

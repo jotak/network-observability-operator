@@ -48,7 +48,7 @@ git push upstream HEAD:$test_branch
 git tag -a "$version" -m "$version"
 git push upstream --tags
 
-PIN_DIGEST=true make helm-update
+VERSION=$version PIN_DIGEST=true make helm-update
 ```
 
 The release script should be triggered ([check github actions](https://github.com/netobserv/netobserv-operator/actions)).
