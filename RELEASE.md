@@ -47,33 +47,24 @@ git commit -a -m "Prepare release $vv"
 git push upstream HEAD:$test_branch
 git tag -a "$version" -m "$version"
 git push upstream --tags
-
-VERSION=$version PIN_DIGEST=true make helm-update
 ```
 
 The release script should be triggered ([check github actions](https://github.com/netobserv/netobserv-operator/actions)).
-
-### Check for helm dependency updates
-
-Check if there are available updates on dependencies (kube-prometheus-stack and loki-stack); e.g. renovate might have opened PRs.
-
-Update dependency versions accordingly in `Chart.yaml`, then run:
-
-```bash
-cd helm && helm dependency update --skip-refresh ; cd ..
-```
 
 ### Testing
 
 When all component drafts are ready, you can test the helm chart on your cluster:
 
 ```bash
+kind create cluster
 make helm-install-release
 make helm-configure-flowcollector
 
-# Check component images:
-kubectl get pods -oyaml | grep image:
-kubectl get pods -n netobserv-privileged -oyaml | grep image:
+# Check component versions:
+kubectl logs deployment/netobserv-controller-manager | grep -i "build version"
+kubectl logs deployment/netobserv-plugin | grep -i "build version"
+kubectl logs deployment/flowlogs-pipeline | grep -i "build version"
+kubectl logs ds/netobserv-ebpf-agent -n netobserv-privileged | grep -i "build version"
 
 make helm-expose-console
 ```
@@ -139,6 +130,8 @@ Click on "Publish release".
 From the operator repository:
 
 ```bash
+VERSION=$version PIN_DIGEST=true make helm-update
+
 helm package helm/
 index_path=/path/to/netobserv.github.io/static/helm
 mkdir -p $index_path/new && mv netobserv-operator-2.0.1.tgz $index_path/new && cd $index_path
