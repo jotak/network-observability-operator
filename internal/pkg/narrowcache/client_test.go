@@ -138,9 +138,9 @@ func TestNameScopedSourceWatchesMissingObject(t *testing.T) {
 	req := reconcile.Request{NamespacedName: client.ObjectKeyFromObject(cm)}
 	src, err := nc.GetSource(ctx, cm, requestEventHandler{
 		request: req,
-		filter: func(oldObject, newObject client.Object) bool {
+		filters: []EventFilter{func(oldObject, newObject client.Object) bool {
 			return oldObject == nil && newObject != nil && newObject.GetName() == "late"
-		},
+		}},
 	})
 	assert.NoError(t, err, "a missing named object should still have a watch source")
 	q := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[reconcile.Request]())
@@ -179,14 +179,14 @@ func TestNameScopedSourceFilterSeesOldAndNewCachedObjects(t *testing.T) {
 	filterSawTransition := atomic.Bool{}
 	src, err := nc.GetSource(ctx, cm.DeepCopy(), requestEventHandler{
 		request: req,
-		filter: func(oldObject, newObject client.Object) bool {
+		filters: []EventFilter{func(oldObject, newObject client.Object) bool {
 			oldCM, oldOK := oldObject.(*corev1.ConfigMap)
 			newCM, newOK := newObject.(*corev1.ConfigMap)
 			out := &corev1.ConfigMap{}
 			filterSawTransition.Store(oldOK && newOK && oldCM.Data["key"] == "before" && newCM.Data["key"] == "after" &&
 				nc.Get(ctx, client.ObjectKeyFromObject(cm), out) == nil && out.Data["key"] == "after")
 			return filterSawTransition.Load()
-		},
+		}},
 	})
 	assert.NoError(t, err)
 	q := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[reconcile.Request]())
@@ -202,10 +202,28 @@ func TestNameScopedSourceFilterSeesOldAndNewCachedObjects(t *testing.T) {
 	q.Done(got)
 }
 
-func TestObjectPredicateFilterUsesDeletedObject(t *testing.T) {
-	deleted := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "watched"}}
-	filter := objectPredicateFilter(func(obj client.Object) bool { return obj.GetName() == "watched" })
-	assert.True(t, filter(deleted, nil), "delete predicates should receive the deleted object")
-	assert.True(t, filter(nil, deleted), "create predicates should receive the created object")
-	assert.False(t, filter(nil, nil))
+func TestRequestEventHandlerRejectsWhenLaterFilterRejects(t *testing.T) {
+	q := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[reconcile.Request]())
+	defer q.ShutDown()
+
+	h := requestEventHandler{
+		filters: []EventFilter{
+			func(client.Object, client.Object) bool { return true },
+			func(client.Object, client.Object) bool { return false },
+		},
+	}
+	h.enqueue(nil, nil, q)
+
+	assert.Equal(t, 0, q.Len())
+}
+
+func TestSafeEnqueueRequestOnEventsRejectsUnmanagedGVK(t *testing.T) {
+	nc := &Client{
+		Client:      &gvkClient{},
+		watchedGVKs: map[string]GVKInfo{},
+	}
+	err := nc.SafeEnqueueRequestOnEvents(
+		context.Background(), "", nil, &corev1.Secret{}, reconcile.Request{}, false,
+	)
+	assert.ErrorContains(t, err, "GVK not managed through narrowcache")
 }

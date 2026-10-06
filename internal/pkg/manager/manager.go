@@ -86,6 +86,7 @@ func NewManager(
 		narrowcache.HorizontalPodAutoscalers,
 		narrowcache.Namespaces,
 		narrowcache.NetworkPolicies,
+		narrowcache.PersistentVolumeClaims,
 		narrowcache.Roles,
 		narrowcache.RoleBindings,
 		narrowcache.Secrets,
@@ -175,15 +176,8 @@ func (m *Manager) NewStaticControllerEnqueuer(group string, ctrl controller.Cont
 	return &StaticControllerEnqueuer{group: group, ctrl: ctrl, nc: m.Client.(*narrowcache.Client)}
 }
 
-func (c *StaticControllerEnqueuer) EnqueueOnChange(ctx context.Context, obj client.Object, req reconcile.Request) error {
-	return c.nc.SafeEnqueueRequestOnEvents(ctx, c.group, c.ctrl, obj, req, false)
-}
-
-func (c *StaticControllerEnqueuer) EnqueueOnChangeIfManaged(ctx context.Context, obj client.Object, req reconcile.Request, filter func(client.Object, client.Object) bool) error {
-	if !c.nc.IsManaged(obj) {
-		return nil
-	}
-	return c.nc.SafeEnqueueRequestOnEventsWithFilter(ctx, c.group, c.ctrl, obj, req, false, narrowcache.EventFilter(filter))
+func (c *StaticControllerEnqueuer) EnqueueOnChange(ctx context.Context, obj client.Object, req reconcile.Request, filters ...func(client.Object, client.Object) bool) error {
+	return c.nc.SafeEnqueueRequestOnEvents(ctx, c.group, c.ctrl, obj, req, false, filters...)
 }
 
 // DynamicControllerEnqueuer creates a dynamic enqueuer (implements enqueuer.Dynamic),
@@ -200,15 +194,8 @@ func (m *Manager) NewDynamicControllerEnqueuer(group string, ctrl controller.Con
 	return &DynamicControllerEnqueuer{group: group, ctrl: ctrl, nc: m.Client.(*narrowcache.Client)}
 }
 
-func (c *DynamicControllerEnqueuer) EnqueueOnChange(ctx context.Context, obj client.Object, req reconcile.Request) error {
-	return c.nc.SafeEnqueueRequestOnEvents(ctx, c.group, c.ctrl, obj, req, true)
-}
-
-func (c *DynamicControllerEnqueuer) EnqueueOnChangeIfManaged(ctx context.Context, obj client.Object, req reconcile.Request, filter func(client.Object, client.Object) bool) error {
-	if !c.nc.IsManaged(obj) {
-		return nil
-	}
-	return c.nc.SafeEnqueueRequestOnEventsWithFilter(ctx, c.group, c.ctrl, obj, req, true, narrowcache.EventFilter(filter))
+func (c *DynamicControllerEnqueuer) EnqueueOnChange(ctx context.Context, obj client.Object, req reconcile.Request, filters ...func(client.Object, client.Object) bool) error {
+	return c.nc.SafeEnqueueRequestOnEvents(ctx, c.group, c.ctrl, obj, req, true, filters...)
 }
 
 func (c *DynamicControllerEnqueuer) ResetActiveWatches() {
