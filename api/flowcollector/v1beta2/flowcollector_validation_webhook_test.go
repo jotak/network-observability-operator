@@ -317,7 +317,7 @@ func TestValidateAgent(t *testing.T) {
 			expectedWarnings: nil,
 		},
 		{
-			name:       "UDNMapping on ocp 4.18.0-0 doesn't trigger warnings",
+			name:       "UDNMapping without privilege on ocp 4.18.0-0 doesn't trigger warnings",
 			ocpVersion: "4.18.0-0.nightly-2025-06-30-082606",
 			fc: &FlowCollector{
 				ObjectMeta: metav1.ObjectMeta{
@@ -327,12 +327,12 @@ func TestValidateAgent(t *testing.T) {
 					Agent: FlowCollectorAgent{
 						Type: AgentEBPF,
 						EBPF: FlowCollectorEBPF{
-							Features:   []AgentFeature{UDNMapping},
-							Privileged: true,
+							Features: []AgentFeature{UDNMapping},
 						},
 					},
 				},
 			},
+			expectedWarnings: nil,
 		},
 		{
 			name: "FlowFilter different ports configs are mutually exclusive",

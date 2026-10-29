@@ -146,7 +146,8 @@ var _ = g.Describe("[sig-netobserv] Network_Observability with VMs", g.Ordered, 
 			Namespace:         namespace,
 			Template:          flowFixturePath,
 			MonolithicLokiURL: fmt.Sprintf("http://loki.%s.svc:3100/", namespace),
-			EBPFPrivileged:    "true",
+			EBPFPrivileged:    "false",
+			EBPFeatures:       []string{"\"SecondaryNetworks\""},
 		}
 
 		defer func() { _ = flow.DeleteFlowcollector() }()
@@ -259,11 +260,11 @@ var _ = g.Describe("[sig-netobserv] Network_Observability with VMs", g.Ordered, 
 		o.Expect(err).ToNot(o.HaveOccurred())
 		o.Expect(vm4Ip).NotTo(o.BeEmpty())
 
-		g.By("Deploy FlowCollector with UDNMapping feature enabled with eBPF in privileged mode")
+		g.By("Deploy FlowCollector with UDNMapping and SecondaryNetworks enabled without privileged mode")
 		flow := Flowcollector{
 			Namespace:         namespace,
-			EBPFPrivileged:    "true",
-			EBPFeatures:       []string{"\"UDNMapping\""},
+			EBPFPrivileged:    "false",
+			EBPFeatures:       []string{"\"UDNMapping\", \"SecondaryNetworks\""},
 			MonolithicLokiURL: fmt.Sprintf("http://loki.%s.svc:3100/", namespace),
 			Template:          flowFixturePath,
 		}
@@ -434,11 +435,11 @@ var _ = g.Describe("[sig-netobserv] Network_Observability with VMs", g.Ordered, 
 		o.Expect(err).ToNot(o.HaveOccurred())
 		o.Expect(vm6Ip).NotTo(o.BeEmpty())
 
-		g.By("Deploy FlowCollector with UDNMapping feature enabled with eBPF in privileged mode")
+		g.By("Deploy FlowCollector with UDNMapping and SecondaryNetworks enabled without privileged mode")
 		flow := Flowcollector{
 			Namespace:         namespace,
-			EBPFPrivileged:    "true",
-			EBPFeatures:       []string{"\"UDNMapping\""},
+			EBPFPrivileged:    "false",
+			EBPFeatures:       []string{"\"UDNMapping\", \"SecondaryNetworks\""},
 			MonolithicLokiURL: fmt.Sprintf("http://loki.%s.svc:3100/", namespace),
 			Template:          flowFixturePath,
 		}
