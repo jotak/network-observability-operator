@@ -26,3 +26,8 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
+
+  - package-ecosystem: "helm"
+    directory: "/helm"
+    schedule:
+      interval: "monthly"
