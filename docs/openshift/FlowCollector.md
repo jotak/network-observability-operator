@@ -304,7 +304,7 @@ Otherwise it is matched as a case-sensitive string.<br/>
 - `EbpfManager`: [Unsupported (*)]. Use eBPF Manager to manage Network Observability eBPF programs. Pre-requisite: the eBPF Manager operator must be installed.<br>
 - `FlowRTT`: Enable flow latency (sRTT) extraction in the eBPF agent from TCP traffic.<br>
 - `IPSec`, to track flows between nodes with IPsec encryption.<br>
-- `NetworkEvents`: Enable the network events monitoring feature, such as correlating flows and network policies. Additional permissions are granted to the eBPF agent pods: access to
+- `NetworkEvents`: Enable the network events monitoring feature, such as correlating flows and network policies. Additional permissions are granted to the eBPF agent pods: CAP_DAC_OVERRIDE, and access to
 the OVS/OVN host filesystems.<br>
 It requires using the OVN-Kubernetes network plugin with the Observability feature.<br>
 IMPORTANT: This feature is available as a Technology Preview.<br>
@@ -314,7 +314,7 @@ the kernel debug host filesystem.<br>
 - `SecondaryNetworks`, to capture flows from all network namespaces. Additional permissions are granted to the eBPF agent pods: CAP_SYS_ADMIN, and access to
 the network namespaces host filesystem.<br>
 - `TLSTracking`, to track TLS usage.<br>
-- `UDNMapping`: Enable interfaces mapping to User Defined Networks (UDN). Additional permissions are granted to the eBPF agent pods: access to
+- `UDNMapping`: Enable interfaces mapping to User Defined Networks (UDN). Additional permissions are granted to the eBPF agent pods: CAP_DAC_OVERRIDE, and access to
 the OVS/OVN host filesystems.<br>
 It requires using the OVN-Kubernetes network plugin.<br><br/>
           <br/>
@@ -380,7 +380,7 @@ Otherwise it is matched as a case-sensitive string.<br/>
         <td>
           `privileged` grants full privileges to the eBPF Agent container. As it weakens the security model,
 it should only be enabled as a last resort, if the agents cannot run otherwise.
-When unset or set to `false`, the operator sets granular capabilities (BPF, PERFMON, NET_ADMIN and possibly SYS_ADMIN) to the container.
+When unset or set to `false`, the operator sets granular capabilities (BPF, PERFMON, NET_ADMIN and possibly SYS_ADMIN and DAC_OVERRIDE) to the container.
 Capabilities can be overriden through `advanced.capOverride`: this should be preferred over granting full privileges.
 When privileged mode is on, the `SecondaryNetworks` feature is also implicitly enabled.<br/>
         </td>
@@ -434,7 +434,7 @@ override the default Linux capabilities from there.
         <td>[]string</td>
         <td>
           Linux capabilities override, when not running as privileged. Default capabilities are BPF, PERFMON and NET_ADMIN.
-SYS_ADMIN may also be used depending on which features are enabled. `capOverride` replaces these defaults.<br/>
+SYS_ADMIN and/or DAC_OVERRIDE may also be used depending on which features are enabled. `capOverride` replaces these defaults.<br/>
         </td>
         <td>false</td>
       </tr><tr>

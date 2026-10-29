@@ -88,6 +88,29 @@ func TestDaemonSetChanged(t *testing.T) {
 	desired.Spec.Template.Spec.Containers[0].Env[0] = corev1.EnvVar{}
 	action = helper.DaemonSetChanged(&current, &desired)
 	assert.Equal(helper.ActionUpdate, int(action))
+
+	// Make sure we don't use derivative for capabilities, which would ignore a trailing
+	// capability removed in "desired" (e.g. when a feature is disabled)
+	current = sampleDS()
+	current.Spec.Template.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
+		Capabilities: &corev1.Capabilities{
+			Add: []corev1.Capability{"BPF", "PERFMON", "NET_ADMIN", "DAC_OVERRIDE"},
+		},
+	}
+	desired = sampleDS()
+	desired.Spec.Template.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
+		Capabilities: &corev1.Capabilities{
+			Add: []corev1.Capability{"BPF", "PERFMON", "NET_ADMIN"},
+		},
+	}
+	action = helper.DaemonSetChanged(&current, &desired)
+	assert.Equal(helper.ActionUpdate, int(action))
+
+	// ... but an unchanged capability set must not trigger an update
+	current = sampleDS()
+	current.Spec.Template.Spec.Containers[0].SecurityContext = desired.Spec.Template.Spec.Containers[0].SecurityContext.DeepCopy()
+	action = helper.DaemonSetChanged(&current, &desired)
+	assert.Equal(helper.ActionNone, int(action))
 }
 
 func TestGetEnvConfig_Default(t *testing.T) {

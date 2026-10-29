@@ -222,9 +222,13 @@ func getAllowedCapabilities(spec *flowslatest.FlowCollectorEBPF) []v1.Capability
 	// PERFMON: Allows access to perf monitoring and profiling features.
 	// NET_ADMIN: required for TC programs to attach/detach to/from qdisc and for TCX hooks.
 	// SYS_ADMIN: required for secondary networks.
+	// DAC_OVERRIDE: required for OVS/OVN socket communication.
 	caps := []v1.Capability{"BPF", "PERFMON", "NET_ADMIN"}
 	if spec.IsSecondaryNetworksEnabled() {
 		caps = append(caps, "SYS_ADMIN")
+	}
+	if spec.IsNetworkEventsEnabled() || spec.IsUDNMappingEnabled() {
+		caps = append(caps, "DAC_OVERRIDE")
 	}
 	return caps
 }
