@@ -1461,7 +1461,6 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 		g.By("Deploy FlowCollector with all features enabled with sampling 50")
 		flow := Flowcollector{
 			Namespace:         namespace,
-			EBPFPrivileged:    "false",
 			EBPFeatures:       []string{"\"DNSTracking\", \"PacketDrop\", \"FlowRTT\", \"PacketTranslation\""},
 			Sampling:          "50",
 			MonolithicLokiURL: fmt.Sprintf("http://loki.%s.svc:3100/", namespace),
@@ -2093,7 +2092,6 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 		g.By("Deploy FlowCollector with UDNMapping and SecondaryNetworks enabled without privileged mode")
 		flow := Flowcollector{
 			Namespace:         namespace,
-			EBPFPrivileged:    "false",
 			EBPFeatures:       []string{"\"UDNMapping\", \"SecondaryNetworks\""},
 			MonolithicLokiURL: fmt.Sprintf("http://loki.%s.svc:3100/", namespace),
 			Template:          flowFixturePath,

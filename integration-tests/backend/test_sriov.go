@@ -91,7 +91,6 @@ func runNetObservSriovFlowTest(namespace string, hardware sriovHardware, flowCol
 		Namespace:         namespace,
 		Template:          flowFixturePath,
 		MonolithicLokiURL: fmt.Sprintf("http://loki.%s.svc:3100/", namespace),
-		EBPFPrivileged:    "false",
 		EBPFeatures:       []string{"\"SecondaryNetworks\""},
 	}
 	flowCollectorCreated := false
