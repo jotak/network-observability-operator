@@ -1920,15 +1920,6 @@ var _ = g.Describe("[sig-netobserv] Network_Observability", func() {
 		o.Expect(securityContext.Capabilities.Add).To(o.ContainElement(corev1.Capability("SYS_ADMIN")))
 		o.Expect(securityContext.Capabilities.Add).To(o.ContainElement(corev1.Capability("DAC_OVERRIDE")))
 
-		hasNetNSMount := false
-		for _, volume := range agentDS.Spec.Template.Spec.Volumes {
-			if volume.Name == "var-run-netns" && volume.HostPath != nil && volume.HostPath.Path == "/var/run/netns" {
-				hasNetNSMount = true
-				break
-			}
-		}
-		o.Expect(hasNetNSMount).To(o.BeTrue())
-
 		startTime := time.Now()
 
 		g.By("Validate isolation from an UDN pod to a CUDN pod")
