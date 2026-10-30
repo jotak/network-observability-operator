@@ -370,7 +370,7 @@ Otherwise it is matched as a case-sensitive string.<br/>
           `privileged` grants full privileges to the eBPF Agent container. As it weakens the security model,
 it should only be enabled as a last resort, if the agents cannot run otherwise.
 When unset or set to `false`, the operator sets granular capabilities (BPF, PERFMON, NET_ADMIN and possibly SYS_ADMIN and DAC_OVERRIDE) to the container.
-Capabilities can be overriden through `advanced.capOverride`: this should be preferred over granting full privileges.
+Capabilities can be overridden through `advanced.capOverride`: this should be preferred over granting full privileges.
 When privileged mode is on, the `SecondaryNetworks` feature is also implicitly enabled.<br/>
         </td>
         <td>false</td>
